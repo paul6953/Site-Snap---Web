@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>SiteSnap</title>
+  <meta name="theme-color" content="#1e3a5f" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <div id="screen-home" class="screen">
+    <header class="topbar">
+      <h1>SiteSnap</h1>
+      <button id="import-btn" class="btn btn-primary">+ Import Floor Plan</button>
+    </header>
+    <input type="file" id="import-input" accept="image/*" hidden />
+    <div id="floorplan-list" class="list"></div>
+    <p id="empty-state" class="empty-state" style="display:none">
+      No floor plans yet. Import one to start pinning site photos.
+    </p>
+  </div>
+
+  <div id="screen-floorplan" class="screen" style="display:none">
+    <header class="topbar">
+      <button id="back-btn" class="btn-icon" aria-label="Back">&larr;</button>
+      <h1 id="fp-title">Floor Plan</h1>
+      <button id="export-btn" class="btn btn-primary">Export PDF</button>
+    </header>
+    <div id="fp-container" class="fp-root"></div>
+    <p class="hint">Tap anywhere on the floor plan to take a timestamped photo. Tap an existing pin to view its photo history.</p>
+  </div>
+
+  <div id="photo-viewer" class="modal" style="display:none">
+    <div class="modal-header">
+      <button id="pv-close" class="btn-icon" aria-label="Close">&times;</button>
+      <input id="pv-note" class="pv-note-input" placeholder="Note for this location…" />
+      <button id="pv-add-photo" class="btn btn-secondary">+ Revisit Photo</button>
+    </div>
+    <div class="modal-body">
+      <button id="pv-prev" class="pv-nav" aria-label="Previous photo">&lsaquo;</button>
+      <div class="pv-photo-area">
+        <img id="pv-image" alt="Site photo" />
+        <p id="pv-caption" class="pv-caption"></p>
+      </div>
+      <button id="pv-next" class="pv-nav" aria-label="Next photo">&rsaquo;</button>
+    </div>
+    <div class="modal-footer">
+      <span id="pv-position" class="pv-position"></span>
+      <button id="pv-delete" class="btn btn-danger">Delete Photo</button>
+    </div>
+  </div>
+
+  <div id="loading-overlay" class="loading-overlay" style="display:none">
+    <div class="spinner"></div>
+    <p id="loading-text">Working…</p>
+  </div>
+
+  <script src="js/vendor/jspdf.umd.min.js"></script>
+  <script src="js/db.js"></script>
+  <script src="js/camera.js"></script>
+  <script src="js/floorplan.js"></script>
+  <script src="js/export.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
