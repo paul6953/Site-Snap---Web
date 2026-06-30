@@ -38,8 +38,9 @@ let currentFloorPlanView = null;
 let currentPins       = [];
 let calibrationPending = false;
 let gpsUnsubscribe    = null;
-let smoothedPos       = null;   // exponential-moving-average position on the floor plan
-let lastPosTime       = 0;      // ms timestamp of the last accepted GPS fix
+let smoothedPos       = null;   // EMA-smoothed floor plan position
+let manualAnchor      = null;   // { xNorm, yNorm, lat, lng } — set via "I'm Here" button
+let setLocationMode   = false;  // true while waiting for user to tap their location
 
 let viewerPin    = null;
 let viewerPhotos = [];
@@ -147,7 +148,8 @@ async function openFloorPlan(id) {
     imageUrl: currentFpImageUrl,
     naturalWidth:  currentFpDims.w,
     naturalHeight: currentFpDims.h,
-    onTapPin: handleTapPin,
+    onTapPin:   handleTapPin,
+    onTapEmpty: handleFloorPlanTap,
   });
   currentFloorPlanView.setPins(currentPins);
 
@@ -235,77 +237,110 @@ function recalibrate() {
 }
 document.getElementById('calibrate-btn').addEventListener('click', recalibrate);
 
-// ─── Live GPS tracking with smoothing ────────────────────────────────────────
+// ─── Live GPS tracking ────────────────────────────────────────────────────────
 //
-// Raw GPS on a phone jumps ±5-20 m between readings even when standing still.
-// Three layers of filtering make the live-position dot usable in practice:
+// Absolute GPS indoors is typically ±15–50 m — not accurate enough to track
+// room-to-room movement. The "I'm Here" anchor removes this problem:
+// the user taps their known position once, and we track GPS *delta* from that
+// anchor rather than absolute coordinates. Relative GPS movement is 3-5× more
+// accurate than absolute position because systematic errors cancel out.
 //
-//  1. Accuracy gate  — drop readings worse than 80 m (pure noise at that level)
-//  2. Velocity cap   — walking speed on a site is ≤ 2 m/s; a larger single-
-//                      frame jump is a GPS glitch, so we clamp it
-//  3. Weighted EMA   — better-accuracy readings pull the smoothed position
-//                      toward them faster; poor readings barely move the dot
-//
-function applyPositionSmoothing(rawCoords, accuracyMetres, ppm, nowMs) {
-  const dt = Math.min((nowMs - lastPosTime) / 1000, 2); // seconds since last fix, capped at 2s
-  lastPosTime = nowMs;
+// On top of that, a light EMA (alpha 0.55) smooths out GPS jitter without
+// making the dot feel frozen.
 
-  if (!smoothedPos) {
-    smoothedPos = { xNorm: rawCoords.xNorm, yNorm: rawCoords.yNorm };
-    return smoothedPos;
-  }
+function computePosition(pos) {
+  const cal = currentFloorPlan?.calibration;
+  if (!cal || !currentFpDims) return null;
 
-  // Velocity cap: max 2 m/s walking speed → max pixel jump per dt
-  const maxPixelJump = 2 * ppm * dt;
-  const dxPx = (rawCoords.xNorm - smoothedPos.xNorm) * (currentFpDims?.w || 1);
-  const dyPx = (rawCoords.yNorm - smoothedPos.yNorm) * (currentFpDims?.h || 1);
-  const jumpPx = Math.hypot(dxPx, dyPx);
-
-  let targetCoords = rawCoords;
-  if (jumpPx > maxPixelJump && maxPixelJump > 0) {
-    // Clamp the jump to the velocity limit
-    const scale = maxPixelJump / jumpPx;
-    targetCoords = {
-      xNorm: smoothedPos.xNorm + (rawCoords.xNorm - smoothedPos.xNorm) * scale,
-      yNorm: smoothedPos.yNorm + (rawCoords.yNorm - smoothedPos.yNorm) * scale,
+  if (manualAnchor) {
+    // Relative mode: anchor_floor_pos + GPS_delta_from_anchor_gps.
+    // Absolute GPS error is constant and cancels; only relative error remains.
+    const anchorFloor = gpsToFloorPlan(manualAnchor.lat, manualAnchor.lng, cal, currentFpDims);
+    const currentFloor = gpsToFloorPlan(pos.lat, pos.lng, cal, currentFpDims);
+    if (!anchorFloor || !currentFloor) return null;
+    return {
+      xNorm: manualAnchor.xNorm + (currentFloor.xNorm - anchorFloor.xNorm),
+      yNorm: manualAnchor.yNorm + (currentFloor.yNorm - anchorFloor.yNorm),
     };
   }
 
-  // Weighted EMA: alpha ∝ GPS quality. Good fix (5 m) → alpha 0.7 (responsive).
-  // Poor fix (50 m) → alpha 0.07 (sluggish but stable).
-  const alpha = Math.min(0.85, Math.max(0.05, 3.5 / Math.max(1, accuracyMetres)));
-  smoothedPos = {
-    xNorm: smoothedPos.xNorm + alpha * (targetCoords.xNorm - smoothedPos.xNorm),
-    yNorm: smoothedPos.yNorm + alpha * (targetCoords.yNorm - smoothedPos.yNorm),
-  };
-  return smoothedPos;
+  return gpsToFloorPlan(pos.lat, pos.lng, cal, currentFpDims);
 }
 
 function startLiveTracking() {
   if (gpsUnsubscribe) gpsUnsubscribe();
   smoothedPos = null;
-  lastPosTime = 0;
 
   gpsUnsubscribe = GPS.onUpdate((pos) => {
     updateGpsStatus(pos);
-    if (!currentFloorPlan?.calibration || !currentFpDims || !currentFloorPlanView) return;
+    if (!currentFloorPlanView) return;
 
-    // Accuracy gate: readings worse than 80 m are useless for positioning
-    if (pos.accuracy > 80) return;
+    // Discard truly unusable readings (cell-tower-only fallback, deep indoor).
+    if (pos.accuracy > 150) return;
 
-    const raw = gpsToFloorPlan(pos.lat, pos.lng, currentFloorPlan.calibration, currentFpDims);
+    const raw = computePosition(pos);
     if (!raw) return;
 
-    const ppm = pixelsPerMetre(currentFloorPlan.calibration, currentFpDims);
-    const smooth = applyPositionSmoothing(raw, pos.accuracy, ppm, Date.now());
+    // Light EMA: alpha 0.55 means the dot reaches 90% of a real position
+    // change in ~3 updates (~3-6 s), while filtering single-reading glitches.
+    const alpha = 0.55;
+    if (!smoothedPos) {
+      smoothedPos = { xNorm: raw.xNorm, yNorm: raw.yNorm };
+    } else {
+      smoothedPos = {
+        xNorm: smoothedPos.xNorm + alpha * (raw.xNorm - smoothedPos.xNorm),
+        yNorm: smoothedPos.yNorm + alpha * (raw.yNorm - smoothedPos.yNorm),
+      };
+    }
 
+    const ppm = pixelsPerMetre(currentFloorPlan.calibration, currentFpDims);
     currentFloorPlanView.updateLivePosition(
-      Math.max(0, Math.min(1, smooth.xNorm)),
-      Math.max(0, Math.min(1, smooth.yNorm)),
+      Math.max(0, Math.min(1, smoothedPos.xNorm)),
+      Math.max(0, Math.min(1, smoothedPos.yNorm)),
       pos.accuracy,
       ppm
     );
   });
+}
+
+// ─── "I'm Here" — manual position anchor ─────────────────────────────────────
+const imHereBtn = document.getElementById('im-here-btn');
+
+imHereBtn.addEventListener('click', () => {
+  if (!currentFloorPlanView || calibrationPending) return;
+  setLocationMode = !setLocationMode;
+  if (setLocationMode) {
+    setBanner('Tap exactly where you are standing on the floor plan.');
+    imHereBtn.textContent = '✕ Cancel';
+    imHereBtn.classList.add('active');
+  } else {
+    setBanner('');
+    imHereBtn.textContent = '📍 I\'m Here';
+    imHereBtn.classList.remove('active');
+  }
+});
+
+// floorplan.js calls onTapEmpty for normal (non-calibration) empty taps via
+// a new optional callback we wire up here.
+function handleFloorPlanTap(xNorm, yNorm) {
+  if (!setLocationMode) return;
+  const gps = GPS.getPosition();
+  manualAnchor = {
+    xNorm,
+    yNorm,
+    lat: gps ? gps.lat : (currentFloorPlan?.calibration?.p1?.lat ?? 0),
+    lng: gps ? gps.lng : (currentFloorPlan?.calibration?.p1?.lng ?? 0),
+  };
+  smoothedPos = { xNorm, yNorm };
+  setLocationMode = false;
+  imHereBtn.textContent = '📍 I\'m Here';
+  imHereBtn.classList.remove('active');
+  setBanner('');
+  if (currentFloorPlanView) {
+    currentFloorPlanView.updateLivePosition(xNorm, yNorm, gps?.accuracy ?? 0,
+      pixelsPerMetre(currentFloorPlan.calibration, currentFpDims));
+  }
+  alert('Location set. The dot will now track your GPS movement relative to this spot.');
 }
 
 // ─── Take Photo (bottom button) ───────────────────────────────────────────────
@@ -348,7 +383,8 @@ backBtn.addEventListener('click', () => {
   if (gpsUnsubscribe) { gpsUnsubscribe(); gpsUnsubscribe = null; }
   GPS.stop();
   smoothedPos = null;
-  lastPosTime = 0;
+  manualAnchor = null;
+  setLocationMode = false;
   if (currentFloorPlanView) {
     if (currentFloorPlanView.isCalibrating()) currentFloorPlanView.cancelCalibration();
     currentFloorPlanView.destroy();

@@ -1,7 +1,7 @@
 // Zoomable/pannable floor plan view.
 // Pins and the live-position marker are children of the same transformed stage,
 // so they ride along with zoom/pan automatically.
-function createFloorPlanView(container, { imageUrl, naturalWidth, naturalHeight, onTapPin }) {
+function createFloorPlanView(container, { imageUrl, naturalWidth, naturalHeight, onTapPin, onTapEmpty }) {
   container.innerHTML = `
     <div class="fp-viewport">
       <div class="fp-stage">
@@ -147,6 +147,7 @@ function createFloorPlanView(container, { imageUrl, naturalWidth, naturalHeight,
 
     // Normal mode: only filter taps that were actually a drag.
     if (gestureMoved) return;
+    onTapEmpty && onTapEmpty(pt.xNorm, pt.yNorm);
   });
 
   // --- Pin markers ---
