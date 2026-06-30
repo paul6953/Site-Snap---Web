@@ -1,139 +1,168 @@
-// Full-screen camera capture with a burned-in timestamp, matching the
-// "timestamp camera" concept. Returns a Promise<Blob|null> (null = cancelled).
+// Full-screen camera capture.
+// Camera.capture({ lat, lng }) → Promise<Blob|null>
+// GPS coordinates are displayed live in the viewfinder and burned into the
+// captured frame along with the timestamp.
 const Camera = {
-  async capture() {
+  async capture({ lat, lng } = {}) {
     return new Promise((resolve) => {
       const overlay = document.createElement('div');
       overlay.className = 'camera-overlay';
       overlay.innerHTML = `
+        <div class="camera-topbar">
+          <button class="btn-icon camera-cancel" aria-label="Cancel">&#10005;</button>
+          <div class="camera-gps-badge"></div>
+        </div>
         <video class="camera-video" autoplay playsinline muted></video>
         <canvas class="camera-canvas" style="display:none"></canvas>
-        <div class="camera-error" style="display:none"></div>
-        <div class="camera-controls">
-          <button class="btn btn-secondary camera-cancel">Cancel</button>
+        <div class="camera-stamp-overlay"></div>
+        <div class="camera-bottom">
           <button class="camera-shutter" aria-label="Take photo"></button>
-          <span class="camera-spacer"></span>
         </div>
-        <div class="camera-confirm-controls" style="display:none">
+        <div class="camera-confirm-row" style="display:none">
           <button class="btn btn-secondary camera-retake">Retake</button>
           <button class="btn btn-primary camera-use">Use Photo</button>
         </div>
       `;
       document.body.appendChild(overlay);
 
-      const video = overlay.querySelector('.camera-video');
-      const canvas = overlay.querySelector('.camera-canvas');
-      const errorBox = overlay.querySelector('.camera-error');
-      const shutterBtn = overlay.querySelector('.camera-shutter');
-      const cancelBtn = overlay.querySelector('.camera-cancel');
-      const retakeBtn = overlay.querySelector('.camera-retake');
-      const useBtn = overlay.querySelector('.camera-use');
-      const liveControls = overlay.querySelector('.camera-controls');
-      const confirmControls = overlay.querySelector('.camera-confirm-controls');
+      const video       = overlay.querySelector('.camera-video');
+      const canvas      = overlay.querySelector('.camera-canvas');
+      const stampDiv    = overlay.querySelector('.camera-stamp-overlay');
+      const gpsBadge    = overlay.querySelector('.camera-gps-badge');
+      const cancelBtn   = overlay.querySelector('.camera-cancel');
+      const shutterBtn  = overlay.querySelector('.camera-shutter');
+      const retakeBtn   = overlay.querySelector('.camera-retake');
+      const useBtn      = overlay.querySelector('.camera-use');
+      const bottomBar   = overlay.querySelector('.camera-bottom');
+      const confirmRow  = overlay.querySelector('.camera-confirm-row');
 
       let stream = null;
       let capturedBlob = null;
+      let stampInterval = null;
+
+      if (lat != null && lng != null) {
+        const latStr = Math.abs(lat).toFixed(5) + (lat >= 0 ? '° N' : '° S');
+        const lngStr = Math.abs(lng).toFixed(5) + (lng >= 0 ? '° E' : '° W');
+        gpsBadge.textContent = `${latStr}  ${lngStr}`;
+      }
+
+      function getStampText() {
+        const time = new Date().toLocaleString(undefined, {
+          year: 'numeric', month: 'short', day: 'numeric',
+          hour: '2-digit', minute: '2-digit', second: '2-digit',
+        });
+        if (lat != null && lng != null) {
+          const latStr = Math.abs(lat).toFixed(4) + (lat >= 0 ? '°N' : '°S');
+          const lngStr = Math.abs(lng).toFixed(4) + (lng >= 0 ? '°E' : '°W');
+          return `${time}\n${latStr}  ${lngStr}`;
+        }
+        return time;
+      }
+
+      function updateStampOverlay() {
+        stampDiv.textContent = getStampText().replace('\n', '  ');
+      }
+
+      stampInterval = setInterval(updateStampOverlay, 1000);
+      updateStampOverlay();
 
       function cleanup(result) {
-        if (stream) {
-          stream.getTracks().forEach((t) => t.stop());
-        }
+        clearInterval(stampInterval);
+        if (stream) stream.getTracks().forEach((t) => t.stop());
         overlay.remove();
         resolve(result);
       }
 
       cancelBtn.addEventListener('click', () => cleanup(null));
 
-      function showError(message) {
-        errorBox.style.display = 'block';
-        errorBox.textContent = message;
-      }
-
       async function startStream() {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          showError('Camera requires HTTPS (or localhost). This page was not loaded over a secure connection.');
-          return;
-        }
         const attempts = [
           { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false },
           { video: true, audio: false },
         ];
-        let lastErr = null;
-        for (const constraints of attempts) {
-          try {
-            stream = await navigator.mediaDevices.getUserMedia(constraints);
-            break;
-          } catch (err) {
-            lastErr = err;
-          }
+        for (const c of attempts) {
+          try { stream = await navigator.mediaDevices.getUserMedia(c); break; }
+          catch (e) { console.warn('getUserMedia attempt failed:', e.name); }
         }
         if (!stream) {
-          console.error('Camera getUserMedia failed:', lastErr);
-          showError('Camera unavailable: ' + (lastErr && (lastErr.message || lastErr.name) || 'permission denied'));
+          shutterBtn.textContent = 'Camera unavailable';
+          shutterBtn.disabled = true;
           return;
         }
         video.srcObject = stream;
-        video.play().catch((err) => console.error('video.play() failed:', err));
+        video.play().catch((e) => console.error('video.play():', e));
       }
 
-      startStream();
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        shutterBtn.textContent = 'Camera requires HTTPS';
+        shutterBtn.disabled = true;
+      } else {
+        startStream();
+      }
 
-      // Readiness is checked at click time rather than gated by a single
-      // 'loadedmetadata' listener — that event doesn't fire reliably on
-      // every browser, which previously left the shutter permanently inert.
       shutterBtn.addEventListener('click', () => {
-        const w = video.videoWidth;
-        const h = video.videoHeight;
+        const w = video.videoWidth, h = video.videoHeight;
         if (!w || !h) {
-          showError('Camera is still starting up — wait a second and try again.');
+          shutterBtn.textContent = 'Starting…';
+          setTimeout(() => { shutterBtn.textContent = ''; }, 1500);
           return;
         }
-        errorBox.style.display = 'none';
-        canvas.width = w;
-        canvas.height = h;
+
+        canvas.width = w; canvas.height = h;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(video, 0, 0, w, h);
-        stampTimestamp(ctx, w, h);
+        burnStamp(ctx, w, h, getStampText());
 
-        canvas.style.display = 'block';
         video.style.display = 'none';
-        liveControls.style.display = 'none';
-        confirmControls.style.display = 'flex';
+        canvas.style.display = 'block';
+        bottomBar.style.display = 'none';
+        confirmRow.style.display = 'flex';
+        stampDiv.style.display = 'none';
+        clearInterval(stampInterval);
 
-        canvas.toBlob((blob) => { capturedBlob = blob; }, 'image/jpeg', 0.85);
+        canvas.toBlob((blob) => { capturedBlob = blob; }, 'image/jpeg', 0.88);
       });
 
       retakeBtn.addEventListener('click', () => {
         capturedBlob = null;
         canvas.style.display = 'none';
         video.style.display = 'block';
-        liveControls.style.display = 'flex';
-        confirmControls.style.display = 'none';
+        bottomBar.style.display = 'flex';
+        confirmRow.style.display = 'none';
+        stampDiv.style.display = 'block';
+        stampInterval = setInterval(updateStampOverlay, 1000);
+        updateStampOverlay();
       });
 
       useBtn.addEventListener('click', () => {
-        if (!capturedBlob) return;
-        cleanup(capturedBlob);
+        if (capturedBlob) cleanup(capturedBlob);
       });
     });
   },
 };
 
-function stampTimestamp(ctx, w, h) {
-  const text = new Date().toLocaleString(undefined, {
-    year: 'numeric', month: 'short', day: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-  });
-  const fontSize = Math.max(18, Math.round(h * 0.03));
+function burnStamp(ctx, w, h, text) {
+  const lines = text.split('\n');
+  const fontSize = Math.max(16, Math.round(h * 0.028));
   ctx.font = `bold ${fontSize}px sans-serif`;
-  const padding = fontSize * 0.6;
-  const textWidth = ctx.measureText(text).width;
-  const barHeight = fontSize + padding * 2;
+  const lineH = fontSize * 1.35;
+  const padding = fontSize * 0.55;
+  const maxW = Math.max(...lines.map((l) => ctx.measureText(l).width));
+  const boxH = lineH * lines.length + padding * 2;
+  const boxW = maxW + padding * 2;
+
+  // Bottom-right corner
+  const bx = w - boxW - 12;
+  const by = h - boxH - 12;
 
   ctx.fillStyle = 'rgba(0,0,0,0.55)';
-  ctx.fillRect(0, h - barHeight, textWidth + padding * 2, barHeight);
+  ctx.beginPath();
+  ctx.roundRect(bx, by, boxW, boxH, 6);
+  ctx.fill();
 
   ctx.fillStyle = '#ffffff';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(text, padding, h - barHeight / 2);
+  ctx.textBaseline = 'top';
+  lines.forEach((line, i) => {
+    ctx.fillText(line, bx + padding, by + padding + i * lineH);
+  });
 }

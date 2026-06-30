@@ -1,44 +1,43 @@
-// Zoomable/pannable floor plan view. Pins are children of the same transformed
-// "stage" element as the image, so they ride along with zoom/pan automatically
-// (no manual scale/offset math needed when positioning markers).
-function createFloorPlanView(container, { imageUrl, naturalWidth, naturalHeight, onTapEmpty, onTapPin }) {
+// Zoomable/pannable floor plan view.
+// Pins and the live-position marker are children of the same transformed stage,
+// so they ride along with zoom/pan automatically.
+function createFloorPlanView(container, { imageUrl, naturalWidth, naturalHeight, onTapPin }) {
   container.innerHTML = `
     <div class="fp-viewport">
       <div class="fp-stage">
         <img class="fp-image" src="${imageUrl}" draggable="false" />
         <div class="fp-pins"></div>
         <div class="fp-calib"></div>
+        <div class="fp-you" style="display:none">
+          <div class="you-ring"></div>
+          <div class="you-dot"></div>
+        </div>
       </div>
     </div>
   `;
+
   const viewport = container.querySelector('.fp-viewport');
-  const stage = container.querySelector('.fp-stage');
-  const img = container.querySelector('.fp-image');
-  const pinsLayer = container.querySelector('.fp-pins');
+  const stage    = container.querySelector('.fp-stage');
+  const img      = container.querySelector('.fp-image');
+  const pinsLayer  = container.querySelector('.fp-pins');
   const calibLayer = container.querySelector('.fp-calib');
+  const youMarker  = container.querySelector('.fp-you');
+  const youRing    = container.querySelector('.you-ring');
 
-  let calibrationMode = false;
-  let calibrationCallback = null;
-  let calibrationPoints = [];
-
-  stage.style.width = naturalWidth + 'px';
+  stage.style.width  = naturalWidth  + 'px';
   stage.style.height = naturalHeight + 'px';
 
-  let scale = 1;
-  let tx = 0;
-  let ty = 0;
-  let gestureMoved = false;
+  let scale = 1, tx = 0, ty = 0, gestureMoved = false;
 
   function applyTransform() {
-    stage.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+    stage.style.transform = `translate(${tx}px,${ty}px) scale(${scale})`;
   }
 
   function fitToViewport() {
     const vw = viewport.clientWidth;
     const vh = viewport.clientHeight;
-    const fitScale = Math.min(vw / naturalWidth, vh / naturalHeight);
-    scale = fitScale;
-    tx = (vw - naturalWidth * scale) / 2;
+    scale = Math.min(vw / naturalWidth, vh / naturalHeight);
+    tx = (vw - naturalWidth  * scale) / 2;
     ty = (vh - naturalHeight * scale) / 2;
     applyTransform();
   }
@@ -47,30 +46,20 @@ function createFloorPlanView(container, { imageUrl, naturalWidth, naturalHeight,
   else img.addEventListener('load', fitToViewport);
   window.addEventListener('resize', fitToViewport);
 
-  function clampScale(s) {
-    return Math.min(Math.max(s, 0.2), 6);
-  }
+  function clampScale(s) { return Math.min(Math.max(s, 0.15), 8); }
 
-  function zoomAt(viewportX, viewportY, newScaleRaw) {
-    const newScale = clampScale(newScaleRaw);
-    const ratio = newScale / scale;
-    tx = viewportX - (viewportX - tx) * ratio;
-    ty = viewportY - (viewportY - ty) * ratio;
-    scale = newScale;
+  function zoomAt(vx, vy, newScaleRaw) {
+    const s = clampScale(newScaleRaw);
+    const r = s / scale;
+    tx = vx - (vx - tx) * r;
+    ty = vy - (vy - ty) * r;
+    scale = s;
     applyTransform();
   }
 
-  // --- Pointer tracking for pan + pinch zoom ---
+  // --- Pointer tracking: pan + pinch zoom ---
   const pointers = new Map();
-  let pinchStartDist = 0;
-  let pinchStartScale = 1;
-
-  function dist(a, b) {
-    return Math.hypot(a.x - b.x, a.y - b.y);
-  }
-  function midpoint(a, b) {
-    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-  }
+  let pinchStartDist = 0, pinchStartScale = 1;
 
   viewport.addEventListener('pointerdown', (e) => {
     viewport.setPointerCapture(e.pointerId);
@@ -78,7 +67,7 @@ function createFloorPlanView(container, { imageUrl, naturalWidth, naturalHeight,
     gestureMoved = false;
     if (pointers.size === 2) {
       const [a, b] = [...pointers.values()];
-      pinchStartDist = dist(a, b);
+      pinchStartDist  = Math.hypot(a.x - b.x, a.y - b.y);
       pinchStartScale = scale;
     }
   });
@@ -90,117 +79,119 @@ function createFloorPlanView(container, { imageUrl, naturalWidth, naturalHeight,
     pointers.set(e.pointerId, curr);
 
     if (pointers.size === 1) {
-      const dx = curr.x - prev.x;
-      const dy = curr.y - prev.y;
+      const dx = curr.x - prev.x, dy = curr.y - prev.y;
       if (Math.abs(dx) > 3 || Math.abs(dy) > 3) gestureMoved = true;
-      tx += dx;
-      ty += dy;
+      tx += dx; ty += dy;
       applyTransform();
     } else if (pointers.size === 2) {
       gestureMoved = true;
       const [a, b] = [...pointers.values()];
-      const newDist = dist(a, b);
-      const mid = midpoint(a, b);
+      const d   = Math.hypot(a.x - b.x, a.y - b.y);
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
       const rect = viewport.getBoundingClientRect();
-      const localMid = { x: mid.x - rect.left, y: mid.y - rect.top };
-      const newScale = pinchStartScale * (newDist / pinchStartDist);
-      zoomAt(localMid.x, localMid.y, newScale);
+      zoomAt(mid.x - rect.left, mid.y - rect.top, pinchStartScale * (d / pinchStartDist));
     }
   });
 
-  function endPointer(e) {
-    pointers.delete(e.pointerId);
-  }
-  viewport.addEventListener('pointerup', endPointer);
+  function endPointer(e) { pointers.delete(e.pointerId); }
+  viewport.addEventListener('pointerup',     endPointer);
   viewport.addEventListener('pointercancel', endPointer);
 
   viewport.addEventListener('wheel', (e) => {
     e.preventDefault();
     const rect = viewport.getBoundingClientRect();
-    const localX = e.clientX - rect.left;
-    const localY = e.clientY - rect.top;
-    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-    zoomAt(localX, localY, scale * factor);
+    zoomAt(e.clientX - rect.left, e.clientY - rect.top, scale * (e.deltaY < 0 ? 1.15 : 1 / 1.15));
   }, { passive: false });
 
+  // --- Tap: calibration or pin ---
   function normFromEvent(e) {
     const rect = viewport.getBoundingClientRect();
-    const viewportX = e.clientX - rect.left;
-    const viewportY = e.clientY - rect.top;
-    const stageX = (viewportX - tx) / scale;
-    const stageY = (viewportY - ty) / scale;
     return {
-      xNorm: Math.min(1, Math.max(0, stageX / naturalWidth)),
-      yNorm: Math.min(1, Math.max(0, stageY / naturalHeight)),
+      xNorm: Math.min(1, Math.max(0, (e.clientX - rect.left  - tx) / (scale * naturalWidth))),
+      yNorm: Math.min(1, Math.max(0, (e.clientY - rect.top   - ty) / (scale * naturalHeight))),
     };
   }
 
+  let calibrationMode = false, calibTapCallback = null, calibTapCount = 0;
+
   function renderCalibMarker(xNorm, yNorm, label) {
-    const marker = document.createElement('div');
-    marker.className = 'calib-marker';
-    marker.style.left = (xNorm * 100) + '%';
-    marker.style.top = (yNorm * 100) + '%';
-    marker.textContent = label;
-    calibLayer.appendChild(marker);
+    const el = document.createElement('div');
+    el.className = 'calib-marker';
+    el.style.left = (xNorm * 100) + '%';
+    el.style.top  = (yNorm * 100) + '%';
+    el.textContent = label;
+    calibLayer.appendChild(el);
   }
 
   function exitCalibration() {
     calibrationMode = false;
-    calibrationCallback = null;
-    calibrationPoints = [];
+    calibTapCallback = null;
+    calibTapCount = 0;
     pinsLayer.style.pointerEvents = '';
-    calibLayer.innerHTML = '';
   }
 
   viewport.addEventListener('click', (e) => {
     if (gestureMoved) return;
-    const point = normFromEvent(e);
+    const pt = normFromEvent(e);
+
     if (calibrationMode) {
-      calibrationPoints.push(point);
-      renderCalibMarker(point.xNorm, point.yNorm, String(calibrationPoints.length));
-      if (calibrationPoints.length === 2) {
-        const [p1, p2] = calibrationPoints;
-        const callback = calibrationCallback;
-        exitCalibration();
-        callback(p1, p2);
-      }
+      calibTapCount++;
+      renderCalibMarker(pt.xNorm, pt.yNorm, String(calibTapCount));
+      const idx = calibTapCount;
+      if (calibTapCount >= 2) exitCalibration();
+      calibTapCallback && calibTapCallback(pt, idx);
       return;
     }
-    onTapEmpty(point.xNorm, point.yNorm);
+    // Normal mode: empty-area taps do nothing — camera launched by bottom button.
   });
 
+  // --- Pin markers ---
   function renderPins(pins) {
     pinsLayer.innerHTML = '';
-    pins.forEach((pin, index) => {
-      const marker = document.createElement('div');
-      marker.className = 'pin-marker';
-      marker.style.left = (pin.xNorm * 100) + '%';
-      marker.style.top = (pin.yNorm * 100) + '%';
-      marker.textContent = String(index + 1);
-      marker.addEventListener('click', (e) => {
-        e.stopPropagation();
-        onTapPin(pin);
-      });
-      pinsLayer.appendChild(marker);
+    pins.forEach((pin, i) => {
+      const el = document.createElement('div');
+      el.className = 'pin-marker';
+      el.style.left = (pin.xNorm * 100) + '%';
+      el.style.top  = (pin.yNorm * 100) + '%';
+      el.textContent = String(i + 1);
+      el.addEventListener('click', (e) => { e.stopPropagation(); onTapPin(pin); });
+      pinsLayer.appendChild(el);
     });
+  }
+
+  // --- Live "you are here" marker ---
+  function updateLivePosition(xNorm, yNorm, accuracyMetres, pxPerMetre) {
+    youMarker.style.display = 'block';
+    youMarker.style.left = (xNorm * 100) + '%';
+    youMarker.style.top  = (yNorm * 100) + '%';
+    const ringDiameter = Math.round(accuracyMetres * pxPerMetre * 2);
+    youRing.style.width  = ringDiameter + 'px';
+    youRing.style.height = ringDiameter + 'px';
+    youRing.style.marginLeft = (-ringDiameter / 2) + 'px';
+    youRing.style.marginTop  = (-ringDiameter / 2) + 'px';
+  }
+
+  function clearLivePosition() {
+    youMarker.style.display = 'none';
   }
 
   return {
     setPins: renderPins,
+    updateLivePosition,
+    clearLivePosition,
     resetView: fitToViewport,
-    startCalibration(onComplete) {
+    clearCalibMarkers() { calibLayer.innerHTML = ''; },
+
+    startCalibration(onTapped) {
       calibrationMode = true;
-      calibrationPoints = [];
-      calibrationCallback = onComplete;
+      calibTapCount   = 0;
+      calibTapCallback = onTapped;
       pinsLayer.style.pointerEvents = 'none';
       calibLayer.innerHTML = '';
     },
     cancelCalibration: exitCalibration,
-    isCalibrating() {
-      return calibrationMode;
-    },
-    destroy() {
-      window.removeEventListener('resize', fitToViewport);
-    },
+    isCalibrating() { return calibrationMode; },
+
+    destroy() { window.removeEventListener('resize', fitToViewport); },
   };
 }

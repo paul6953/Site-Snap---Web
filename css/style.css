@@ -15,15 +15,14 @@ html, body {
 .topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: max(12px, env(safe-area-inset-top)) 16px 12px;
+  gap: 8px;
+  padding: max(12px, env(safe-area-inset-top)) 12px 12px;
   background: #1e3a5f;
   color: #fff;
   flex-shrink: 0;
 }
 .topbar h1 {
-  font-size: 18px;
+  font-size: 16px;
   margin: 0;
   flex: 1;
   overflow: hidden;
@@ -37,24 +36,37 @@ html, body {
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
 }
-.btn-primary { background: #ff9f1c; color: #1c1c1e; }
-.btn-secondary { background: #e5e7eb; color: #1c1c1e; }
-.btn-danger { background: #dc2626; color: #fff; }
+.btn-sm { padding: 7px 10px; font-size: 12px; }
+.btn-primary   { background: #ff9f1c; color: #1c1c1e; }
+.btn-secondary { background: rgba(255,255,255,0.18); color: #fff; }
+.btn-danger    { background: #dc2626; color: #fff; }
 .btn-icon {
   background: none;
   border: none;
   color: #fff;
   font-size: 22px;
   cursor: pointer;
-  padding: 4px 8px;
+  padding: 4px 6px;
+  flex-shrink: 0;
 }
 
-.list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 12px;
+/* GPS status badge in topbar */
+.gps-status {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 7px;
+  border-radius: 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
+.gps-good { background: #16a34a; color: #fff; }
+.gps-ok   { background: #ca8a04; color: #fff; }
+.gps-weak { background: #dc2626; color: #fff; }
+
+/* Home */
+.list { flex: 1; overflow-y: auto; padding: 12px; }
 .fp-card {
   display: flex;
   align-items: center;
@@ -64,29 +76,29 @@ html, body {
   padding: 10px;
   margin-bottom: 10px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  cursor: pointer;
 }
-.fp-card img {
-  width: 56px;
-  height: 56px;
-  object-fit: cover;
-  border-radius: 6px;
-  background: #ddd;
-}
+.fp-card img { width: 56px; height: 56px; object-fit: cover; border-radius: 6px; background: #ddd; }
 .fp-card-info { flex: 1; min-width: 0; }
 .fp-card-name { font-weight: 600; font-size: 15px; }
 .fp-card-meta { font-size: 12px; color: #666; }
+.empty-state { text-align: center; color: #888; padding: 40px 24px; }
 
-.empty-state {
+/* Floor plan screen */
+.fp-banner {
+  background: #ffe7b3;
+  color: #5a3d00;
+  font-size: 13px;
+  font-weight: 600;
   text-align: center;
-  color: #888;
-  padding: 40px 24px;
+  padding: 9px 16px;
 }
-
 .fp-root {
   flex: 1;
   position: relative;
   overflow: hidden;
   background: #2b2b2b;
+  min-height: 0;
 }
 .fp-viewport {
   width: 100%;
@@ -97,14 +109,12 @@ html, body {
 }
 .fp-stage {
   position: absolute;
-  top: 0;
-  left: 0;
+  top: 0; left: 0;
   transform-origin: 0 0;
 }
 .fp-image {
   display: block;
-  width: 100%;
-  height: 100%;
+  width: 100%; height: 100%;
   user-select: none;
   pointer-events: none;
 }
@@ -112,12 +122,30 @@ html, body {
   position: absolute;
   inset: 0;
 }
+
+/* Photo pin markers */
+.pin-marker {
+  position: absolute;
+  width: 26px; height: 26px;
+  margin-left: -13px; margin-top: -13px;
+  border-radius: 50%;
+  background: #d62828;
+  border: 2px solid #fff;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  cursor: pointer;
+}
+
+/* Calibration reference markers */
 .calib-marker {
   position: absolute;
-  width: 22px;
-  height: 22px;
-  margin-left: -11px;
-  margin-top: -11px;
+  width: 22px; height: 22px;
+  margin-left: -11px; margin-top: -11px;
   border-radius: 50%;
   background: #1e6fd9;
   border: 2px solid #fff;
@@ -129,39 +157,59 @@ html, body {
   justify-content: center;
   box-shadow: 0 1px 4px rgba(0,0,0,0.4);
 }
-.pin-marker {
+
+/* Live "you are here" marker */
+.fp-you {
   position: absolute;
-  width: 26px;
-  height: 26px;
-  margin-left: -13px;
-  margin-top: -13px;
+  pointer-events: none;
+}
+.you-dot {
+  width: 16px; height: 16px;
+  margin-left: -8px; margin-top: -8px;
   border-radius: 50%;
-  background: #d62828;
-  border: 2px solid #fff;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
+  background: #1e6fd9;
+  border: 2.5px solid #fff;
+  box-shadow: 0 0 6px rgba(30,111,217,0.7);
+  animation: you-pulse 2s ease-in-out infinite;
+}
+.you-ring {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(30, 111, 217, 0.12);
+  border: 1px solid rgba(30, 111, 217, 0.3);
+  top: 0; left: 0;
+}
+@keyframes you-pulse {
+  0%, 100% { transform: scale(1);   opacity: 1; }
+  50%       { transform: scale(1.3); opacity: 0.7; }
+}
+
+/* Bottom Take Photo bar */
+.fp-bottom-bar {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  padding: 12px 16px max(16px, env(safe-area-inset-bottom));
+  background: #111;
+  flex-shrink: 0;
+}
+.take-photo-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #ff9f1c;
+  color: #1c1c1e;
+  border: none;
+  border-radius: 30px;
+  padding: 14px 32px;
+  font-size: 17px;
+  font-weight: 700;
   cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.35);
 }
-.fp-banner {
-  background: #ffe7b3;
-  color: #5a3d00;
-  font-size: 13px;
-  text-align: center;
-  padding: 8px 16px;
-  font-weight: 600;
-}
-.hint {
-  margin: 0;
-  padding: 8px 16px max(8px, env(safe-area-inset-bottom));
-  font-size: 12px;
-  color: #666;
-  background: #fff;
-  text-align: center;
+.take-photo-icon {
+  font-size: 22px;
+  color: #d62828;
 }
 
 /* Camera overlay */
@@ -173,41 +221,74 @@ html, body {
   display: flex;
   flex-direction: column;
 }
-.camera-video, .camera-canvas {
-  flex: 1;
-  width: 100%;
-  object-fit: contain;
-  background: #000;
-}
-.camera-error {
-  color: #fff;
-  text-align: center;
-  padding: 24px;
-}
-.camera-controls, .camera-confirm-controls {
+.camera-topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px max(16px, env(safe-area-inset-left)) max(20px, env(safe-area-inset-bottom));
+  padding: max(12px, env(safe-area-inset-top)) 14px 10px;
+  background: rgba(0,0,0,0.6);
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  z-index: 2;
+}
+.camera-gps-badge {
+  font-size: 11px;
+  color: #adf;
+  font-weight: 600;
+}
+.camera-video, .camera-canvas {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
   background: #000;
 }
-.camera-confirm-controls { justify-content: center; gap: 24px; }
-.camera-spacer { width: 64px; }
+/* Timestamp overlay shown live in the viewfinder */
+.camera-stamp-overlay {
+  position: absolute;
+  bottom: 90px;
+  right: 14px;
+  font-size: 13px;
+  font-weight: bold;
+  color: #fff;
+  background: rgba(0,0,0,0.5);
+  padding: 5px 9px;
+  border-radius: 5px;
+  pointer-events: none;
+  z-index: 2;
+  text-align: right;
+}
+.camera-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 24px max(24px, env(safe-area-inset-bottom));
+  background: rgba(0,0,0,0.7);
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  z-index: 2;
+}
 .camera-shutter {
-  width: 64px;
-  height: 64px;
+  width: 72px; height: 72px;
   border-radius: 50%;
   background: #fff;
-  border: 4px solid #888;
+  border: 5px solid #999;
   cursor: pointer;
 }
-.camera-error {
-  background: rgba(120,0,0,0.4);
-  margin: 12px;
-  border-radius: 8px;
+.camera-shutter:active { background: #ddd; }
+.camera-confirm-row {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 18px 24px max(24px, env(safe-area-inset-bottom));
+  background: rgba(0,0,0,0.7);
+  z-index: 2;
 }
 
-/* Photo viewer modal */
+/* Photo viewer */
 .modal {
   position: fixed;
   inset: 0;
@@ -232,6 +313,7 @@ html, body {
   padding: 8px 10px;
   font-size: 13px;
 }
+.pv-distance { text-align: center; color: #6fa8ff; font-size: 12px; padding-bottom: 6px; }
 .modal-body {
   flex: 1;
   display: flex;
@@ -247,22 +329,14 @@ html, body {
   justify-content: center;
   min-width: 0;
 }
-.pv-photo-area img {
-  max-width: 100%;
-  max-height: 80%;
-  object-fit: contain;
-}
-.pv-caption {
-  color: #ddd;
-  font-size: 13px;
-  margin: 10px 0 0;
-}
+.pv-photo-area img { max-width: 100%; max-height: 80%; object-fit: contain; }
+.pv-caption { color: #ddd; font-size: 13px; margin: 10px 0 0; }
 .pv-nav {
   background: none;
   border: none;
   color: #fff;
   font-size: 36px;
-  width: 48px;
+  width: 44px;
   flex-shrink: 0;
   cursor: pointer;
 }
@@ -273,13 +347,8 @@ html, body {
   padding: 10px 16px max(14px, env(safe-area-inset-bottom));
 }
 .pv-position { color: #aaa; font-size: 12px; }
-.pv-distance {
-  text-align: center;
-  color: #6fa8ff;
-  font-size: 12px;
-  padding-bottom: 6px;
-}
 
+/* Loading overlay */
 .loading-overlay {
   position: fixed;
   inset: 0;
@@ -293,8 +362,7 @@ html, body {
   gap: 16px;
 }
 .spinner {
-  width: 36px;
-  height: 36px;
+  width: 36px; height: 36px;
   border: 4px solid rgba(255,255,255,0.3);
   border-top-color: #fff;
   border-radius: 50%;

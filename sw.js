@@ -1,17 +1,19 @@
-const CACHE_NAME = 'sitesnap-v3';
+const CACHE_NAME = 'sitesnap-v4';
 const ASSETS = [
   '.',
   'index.html',
   'css/style.css',
   'js/db.js',
+  'js/gps.js',
+  'js/calibration.js',
   'js/camera.js',
   'js/floorplan.js',
   'js/export.js',
+  'js/pdfimport.js',
   'js/app.js',
   'js/vendor/jspdf.umd.min.js',
   'js/vendor/pdf.min.js',
   'js/vendor/pdf.worker.min.js',
-  'js/pdfimport.js',
   'manifest.json',
   'icons/icon-192.png',
   'icons/icon-512.png',

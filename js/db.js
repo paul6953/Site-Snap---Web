@@ -83,8 +83,8 @@ const DB = {
   },
 
   // --- Pins ---
-  async addPin({ floorPlanId, xNorm, yNorm, note }) {
-    const record = { id: uid(), floorPlanId, xNorm, yNorm, note: note || null, createdAt: Date.now() };
+  async addPin({ floorPlanId, xNorm, yNorm, lat, lng, note }) {
+    const record = { id: uid(), floorPlanId, xNorm, yNorm, lat: lat ?? null, lng: lng ?? null, note: note || null, createdAt: Date.now() };
     const t = await tx('pins', 'readwrite');
     await promisifyRequest(t.objectStore('pins').add(record));
     return record;

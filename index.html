@@ -11,46 +11,53 @@
 </head>
 <body>
 
+  <!-- ── Home ── -->
   <div id="screen-home" class="screen">
     <header class="topbar">
       <h1>SiteSnap</h1>
-      <button id="import-btn" class="btn btn-primary">+ Import Floor Plan</button>
+      <button id="import-btn" class="btn btn-primary">+ Upload Floor Plan</button>
     </header>
     <input type="file" id="import-input" accept="image/*,application/pdf" hidden />
     <div id="floorplan-list" class="list"></div>
     <p id="empty-state" class="empty-state" style="display:none">
-      No floor plans yet. Import one to start pinning site photos.
+      No floor plans yet. Upload a PDF or image to get started.
     </p>
   </div>
 
+  <!-- ── Floor plan ── -->
   <div id="screen-floorplan" class="screen" style="display:none">
     <header class="topbar">
       <button id="back-btn" class="btn-icon" aria-label="Back">&larr;</button>
       <h1 id="fp-title">Floor Plan</h1>
-      <button id="calibrate-btn" class="btn btn-secondary">Scale</button>
-      <button id="export-btn" class="btn btn-primary">Export PDF</button>
+      <span id="gps-status" class="gps-status gps-weak">GPS…</span>
+      <button id="calibrate-btn" class="btn btn-secondary btn-sm">Recalibrate</button>
+      <button id="export-btn" class="btn btn-primary btn-sm">Export PDF</button>
     </header>
-    <div id="fp-banner" class="fp-banner" style="display:none">
-      Scale required: tap two points on the floor plan a known distance apart, then enter that distance.
-    </div>
+    <div id="fp-banner" class="fp-banner" style="display:none"></div>
     <div id="fp-container" class="fp-root"></div>
-    <p class="hint">Tap anywhere on the floor plan to take a timestamped photo. Tap an existing pin to view its photo history.</p>
+    <div class="fp-bottom-bar">
+      <button id="take-photo-btn" class="take-photo-btn">
+        <span class="take-photo-icon">&#9679;</span>
+        Take Photo
+      </button>
+    </div>
   </div>
 
+  <!-- ── Photo viewer ── -->
   <div id="photo-viewer" class="modal" style="display:none">
     <div class="modal-header">
       <button id="pv-close" class="btn-icon" aria-label="Close">&times;</button>
       <input id="pv-note" class="pv-note-input" placeholder="Note for this location…" />
-      <button id="pv-add-photo" class="btn btn-secondary">+ Revisit Photo</button>
+      <button id="pv-add-photo" class="btn btn-secondary">+ Revisit</button>
     </div>
     <div id="pv-distance" class="pv-distance"></div>
     <div class="modal-body">
-      <button id="pv-prev" class="pv-nav" aria-label="Previous photo">&lsaquo;</button>
+      <button id="pv-prev" class="pv-nav" aria-label="Previous">&lsaquo;</button>
       <div class="pv-photo-area">
         <img id="pv-image" alt="Site photo" />
         <p id="pv-caption" class="pv-caption"></p>
       </div>
-      <button id="pv-next" class="pv-nav" aria-label="Next photo">&rsaquo;</button>
+      <button id="pv-next" class="pv-nav" aria-label="Next">&rsaquo;</button>
     </div>
     <div class="modal-footer">
       <span id="pv-position" class="pv-position"></span>
@@ -58,6 +65,7 @@
     </div>
   </div>
 
+  <!-- ── Loading overlay ── -->
   <div id="loading-overlay" class="loading-overlay" style="display:none">
     <div class="spinner"></div>
     <p id="loading-text">Working…</p>
@@ -67,6 +75,8 @@
   <script src="js/vendor/pdf.min.js"></script>
   <script src="js/pdfimport.js"></script>
   <script src="js/db.js"></script>
+  <script src="js/gps.js"></script>
+  <script src="js/calibration.js"></script>
   <script src="js/camera.js"></script>
   <script src="js/floorplan.js"></script>
   <script src="js/export.js"></script>
