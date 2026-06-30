@@ -138,8 +138,9 @@ function createFloorPlanView(container, { imageUrl, naturalWidth, naturalHeight,
       calibTapCount++;
       renderCalibMarker(pt.xNorm, pt.yNorm, String(calibTapCount));
       const idx = calibTapCount;
-      if (calibTapCount >= 2) exitCalibration();
-      calibTapCallback && calibTapCallback(pt, idx);
+      const cb = calibTapCallback; // save before exitCalibration() nulls it
+      if (idx >= 2) exitCalibration();
+      cb && cb(pt, idx);
       return;
     }
     // Normal mode: empty-area taps do nothing — camera launched by bottom button.

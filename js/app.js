@@ -173,16 +173,18 @@ function runCalibrationStep() {
   currentFloorPlanView.startCalibration(async (point, tapIndex) => {
     const gps = GPS.getPosition();
     if (!gps) {
-      alert('No GPS signal yet.\n\nMake sure Location is enabled for this site in your device settings, then tap the floor plan again.');
+      alert('No GPS fix yet — the GPS status bar must show green before you calibrate.\n\nMake sure Location Services are enabled for this site, then try the two taps again.');
+      calibFirst = null;
       currentFloorPlanView.cancelCalibration();
-      runCalibrationStep(); // re-arm
+      currentFloorPlanView.clearCalibMarkers();
+      setBanner('Step 1 of 2: Stand at a known spot, then tap that exact location on the floor plan.');
+      setTimeout(runCalibrationStep, 50);
       return;
     }
 
     if (tapIndex === 1) {
       calibFirst = { xNorm: point.xNorm, yNorm: point.yNorm, lat: gps.lat, lng: gps.lng };
       setBanner('Step 2 of 2: Walk to a DIFFERENT reference point, stand there, then tap that location.');
-      // re-arm for second point (startCalibration auto-exited after tap 2, but first tap only exited if count reached 2 — it didn't, so mode is still active for the second tap within the same startCalibration session)
     } else if (tapIndex === 2) {
       const p2 = { xNorm: point.xNorm, yNorm: point.yNorm, lat: gps.lat, lng: gps.lng };
       await saveCalibration(calibFirst, p2);
@@ -192,8 +194,8 @@ function runCalibrationStep() {
 
 async function saveCalibration(p1, p2) {
   const dist = gpsDistanceMetres(p1.lat, p1.lng, p2.lat, p2.lng);
-  if (dist < 2) {
-    alert('The two points are too close together (less than 2 m apart by GPS). Please choose two points further apart and recalibrate.');
+  if (dist < 0.1) {
+    alert('GPS returned the same position for both points — the phone may not have a fresh fix yet. Wait for the GPS indicator to turn green, then tap the two reference points again.');
     currentFloorPlanView.clearCalibMarkers();
     calibFirst = null;
     setBanner('Step 1 of 2: Stand at a known spot, then tap that exact location on the floor plan.');
