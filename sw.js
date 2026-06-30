@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sitesnap-v1';
+const CACHE_NAME = 'sitesnap-v2';
 const ASSETS = [
   '.',
   'index.html',
@@ -9,6 +9,9 @@ const ASSETS = [
   'js/export.js',
   'js/app.js',
   'js/vendor/jspdf.umd.min.js',
+  'js/vendor/pdf.min.js',
+  'js/vendor/pdf.worker.min.js',
+  'js/pdfimport.js',
   'manifest.json',
   'icons/icon-192.png',
   'icons/icon-512.png',
@@ -17,11 +20,14 @@ const ASSETS = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
   );
 });
 

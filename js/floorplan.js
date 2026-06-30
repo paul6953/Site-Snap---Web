@@ -7,6 +7,7 @@ function createFloorPlanView(container, { imageUrl, naturalWidth, naturalHeight,
       <div class="fp-stage">
         <img class="fp-image" src="${imageUrl}" draggable="false" />
         <div class="fp-pins"></div>
+        <div class="fp-calib"></div>
       </div>
     </div>
   `;
@@ -14,6 +15,11 @@ function createFloorPlanView(container, { imageUrl, naturalWidth, naturalHeight,
   const stage = container.querySelector('.fp-stage');
   const img = container.querySelector('.fp-image');
   const pinsLayer = container.querySelector('.fp-pins');
+  const calibLayer = container.querySelector('.fp-calib');
+
+  let calibrationMode = false;
+  let calibrationCallback = null;
+  let calibrationPoints = [];
 
   stage.style.width = naturalWidth + 'px';
   stage.style.height = naturalHeight + 'px';
@@ -117,16 +123,50 @@ function createFloorPlanView(container, { imageUrl, naturalWidth, naturalHeight,
     zoomAt(localX, localY, scale * factor);
   }, { passive: false });
 
-  viewport.addEventListener('click', (e) => {
-    if (gestureMoved) return;
+  function normFromEvent(e) {
     const rect = viewport.getBoundingClientRect();
     const viewportX = e.clientX - rect.left;
     const viewportY = e.clientY - rect.top;
     const stageX = (viewportX - tx) / scale;
     const stageY = (viewportY - ty) / scale;
-    const xNorm = Math.min(1, Math.max(0, stageX / naturalWidth));
-    const yNorm = Math.min(1, Math.max(0, stageY / naturalHeight));
-    onTapEmpty(xNorm, yNorm);
+    return {
+      xNorm: Math.min(1, Math.max(0, stageX / naturalWidth)),
+      yNorm: Math.min(1, Math.max(0, stageY / naturalHeight)),
+    };
+  }
+
+  function renderCalibMarker(xNorm, yNorm, label) {
+    const marker = document.createElement('div');
+    marker.className = 'calib-marker';
+    marker.style.left = (xNorm * 100) + '%';
+    marker.style.top = (yNorm * 100) + '%';
+    marker.textContent = label;
+    calibLayer.appendChild(marker);
+  }
+
+  function exitCalibration() {
+    calibrationMode = false;
+    calibrationCallback = null;
+    calibrationPoints = [];
+    pinsLayer.style.pointerEvents = '';
+    calibLayer.innerHTML = '';
+  }
+
+  viewport.addEventListener('click', (e) => {
+    if (gestureMoved) return;
+    const point = normFromEvent(e);
+    if (calibrationMode) {
+      calibrationPoints.push(point);
+      renderCalibMarker(point.xNorm, point.yNorm, String(calibrationPoints.length));
+      if (calibrationPoints.length === 2) {
+        const [p1, p2] = calibrationPoints;
+        const callback = calibrationCallback;
+        exitCalibration();
+        callback(p1, p2);
+      }
+      return;
+    }
+    onTapEmpty(point.xNorm, point.yNorm);
   });
 
   function renderPins(pins) {
@@ -148,6 +188,17 @@ function createFloorPlanView(container, { imageUrl, naturalWidth, naturalHeight,
   return {
     setPins: renderPins,
     resetView: fitToViewport,
+    startCalibration(onComplete) {
+      calibrationMode = true;
+      calibrationPoints = [];
+      calibrationCallback = onComplete;
+      pinsLayer.style.pointerEvents = 'none';
+      calibLayer.innerHTML = '';
+    },
+    cancelCalibration: exitCalibration,
+    isCalibrating() {
+      return calibrationMode;
+    },
     destroy() {
       window.removeEventListener('resize', fitToViewport);
     },

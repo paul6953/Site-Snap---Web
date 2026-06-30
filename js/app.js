@@ -5,6 +5,7 @@ const emptyState = document.getElementById('empty-state');
 const importBtn = document.getElementById('import-btn');
 const importInput = document.getElementById('import-input');
 const backBtn = document.getElementById('back-btn');
+const calibrateBtn = document.getElementById('calibrate-btn');
 const exportBtn = document.getElementById('export-btn');
 const fpTitle = document.getElementById('fp-title');
 const fpContainer = document.getElementById('fp-container');
@@ -16,6 +17,7 @@ const pvImage = document.getElementById('pv-image');
 const pvCaption = document.getElementById('pv-caption');
 const pvNote = document.getElementById('pv-note');
 const pvPosition = document.getElementById('pv-position');
+const pvDistance = document.getElementById('pv-distance');
 const pvPrev = document.getElementById('pv-prev');
 const pvNext = document.getElementById('pv-next');
 const pvClose = document.getElementById('pv-close');
@@ -26,6 +28,7 @@ let homeThumbUrls = [];
 let currentFloorPlan = null;
 let currentFpImageUrl = null;
 let currentFloorPlanView = null;
+let currentFpDims = null;
 let currentPins = [];
 
 let viewerPin = null;
@@ -83,7 +86,21 @@ importInput.addEventListener('change', async () => {
   importInput.value = '';
   if (!file) return;
   const name = file.name.replace(/\.[^/.]+$/, '') || 'Floor Plan';
-  const fp = await DB.addFloorPlan({ name, imageBlob: file });
+
+  let imageBlob = file;
+  if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+    showLoading('Converting PDF…');
+    try {
+      imageBlob = await renderPdfFirstPageToBlob(file);
+    } catch (err) {
+      hideLoading();
+      alert('Could not read that PDF: ' + err.message);
+      return;
+    }
+    hideLoading();
+  }
+
+  const fp = await DB.addFloorPlan({ name, imageBlob });
   await openFloorPlan(fp.id);
 });
 
@@ -106,6 +123,7 @@ async function openFloorPlan(id) {
     img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
     img.src = currentFpImageUrl;
   });
+  currentFpDims = dims;
 
   if (currentFloorPlanView) currentFloorPlanView.destroy();
   currentFloorPlanView = createFloorPlanView(fpContainer, {
@@ -131,8 +149,59 @@ async function handleTapPin(pin) {
   await openPhotoViewer(pin);
 }
 
+function pixelDistanceBetween(a, b, dims) {
+  const dx = (b.xNorm - a.xNorm) * dims.w;
+  const dy = (b.yNorm - a.yNorm) * dims.h;
+  return Math.hypot(dx, dy);
+}
+
+function parseDistanceInput(input) {
+  const match = input.trim().match(/^([\d.]+)\s*(m|meters?|ft|feet|')?$/i);
+  if (!match) return null;
+  const value = parseFloat(match[1]);
+  if (!isFinite(value) || value <= 0) return null;
+  const unitRaw = (match[2] || 'm').toLowerCase();
+  const isFeet = unitRaw.startsWith('f') || unitRaw === "'";
+  return { meters: isFeet ? value * 0.3048 : value, unit: isFeet ? 'ft' : 'm' };
+}
+
+function formatPinDistance(pinA, pinB) {
+  const cal = currentFloorPlan && currentFloorPlan.calibration;
+  if (!cal || !currentFpDims) return null;
+  const calPixelDist = pixelDistanceBetween(cal.p1, cal.p2, currentFpDims);
+  if (!calPixelDist) return null;
+  const metersPerPixel = cal.realMeters / calPixelDist;
+  const pixelDist = pixelDistanceBetween(pinA, pinB, currentFpDims);
+  const meters = pixelDist * metersPerPixel;
+  const display = cal.unit === 'ft' ? meters / 0.3048 : meters;
+  return `${display.toFixed(1)} ${cal.unit}`;
+}
+
+calibrateBtn.addEventListener('click', () => {
+  if (!currentFloorPlanView) return;
+  if (currentFloorPlanView.isCalibrating()) {
+    currentFloorPlanView.cancelCalibration();
+    return;
+  }
+  alert('Tap two points on the floor plan that are a known real-world distance apart (e.g. both ends of a hallway).');
+  currentFloorPlanView.startCalibration(async (p1, p2) => {
+    const input = prompt('Real-world distance between those two points? (e.g. "12 m" or "40 ft")');
+    if (!input) return;
+    const parsed = parseDistanceInput(input);
+    if (!parsed) {
+      alert('Could not understand that distance. Try a format like "12 m" or "40 ft".');
+      return;
+    }
+    const calibration = { p1, p2, realMeters: parsed.meters, unit: parsed.unit };
+    await DB.updateFloorPlanCalibration(currentFloorPlan.id, calibration);
+    currentFloorPlan.calibration = calibration;
+    alert('Scale calibrated. Pin-to-pin distances will now show when viewing a pin.');
+  });
+});
+
 backBtn.addEventListener('click', () => {
   if (currentFloorPlanView) {
+    if (currentFloorPlanView.isCalibrating()) currentFloorPlanView.cancelCalibration();
     currentFloorPlanView.destroy();
     currentFloorPlanView = null;
   }
@@ -171,6 +240,12 @@ async function openPhotoViewer(pin) {
   viewerPhotos = await DB.getPhotosForPin(pin.id);
   viewerIndex = viewerPhotos.length - 1;
   pvNote.value = pin.note || '';
+
+  const idx = currentPins.findIndex((p) => p.id === pin.id);
+  const prevPin = idx > 0 ? currentPins[idx - 1] : null;
+  const distance = prevPin ? formatPinDistance(prevPin, pin) : null;
+  pvDistance.textContent = distance ? `${distance} from previous pin` : '';
+
   photoViewer.style.display = 'flex';
   renderViewerPhoto();
 }

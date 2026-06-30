@@ -64,6 +64,15 @@ const DB = {
     return promisifyRequest(t.objectStore('floorPlans').get(id));
   },
 
+  async updateFloorPlanCalibration(id, calibration) {
+    const t = await tx('floorPlans', 'readwrite');
+    const store = t.objectStore('floorPlans');
+    const fp = await promisifyRequest(store.get(id));
+    if (!fp) return;
+    fp.calibration = calibration;
+    await promisifyRequest(store.put(fp));
+  },
+
   async deleteFloorPlan(id) {
     const pins = await DB.getPinsForFloorPlan(id);
     for (const pin of pins) {

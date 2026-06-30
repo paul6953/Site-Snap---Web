@@ -34,6 +34,10 @@ const Camera = {
       let stream = null;
       let capturedBlob = null;
 
+      // Disabled until the camera stream actually has frames, so a tap can't
+      // capture a blank frame before the video is ready.
+      shutterBtn.disabled = true;
+
       function cleanup(result) {
         if (stream) {
           stream.getTracks().forEach((t) => t.stop());
@@ -44,17 +48,25 @@ const Camera = {
 
       cancelBtn.addEventListener('click', () => cleanup(null));
 
-      navigator.mediaDevices
-        .getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false })
-        .then((s) => {
-          stream = s;
-          video.srcObject = s;
-        })
-        .catch((err) => {
-          errorBox.style.display = 'block';
-          errorBox.textContent = 'Camera unavailable: ' + (err.message || err.name || 'permission denied');
-          liveControls.style.display = 'none';
-        });
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        errorBox.style.display = 'block';
+        errorBox.textContent = 'Camera requires HTTPS (or localhost). This page was not loaded over a secure connection.';
+        shutterBtn.style.display = 'none';
+      } else {
+        navigator.mediaDevices
+          .getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false })
+          .then((s) => {
+            stream = s;
+            video.srcObject = s;
+            video.play().catch(() => {});
+            video.addEventListener('loadedmetadata', () => { shutterBtn.disabled = false; }, { once: true });
+          })
+          .catch((err) => {
+            errorBox.style.display = 'block';
+            errorBox.textContent = 'Camera unavailable: ' + (err.message || err.name || 'permission denied');
+            shutterBtn.style.display = 'none';
+          });
+      }
 
       shutterBtn.addEventListener('click', () => {
         const w = video.videoWidth;
