@@ -8,6 +8,7 @@ const backBtn = document.getElementById('back-btn');
 const calibrateBtn = document.getElementById('calibrate-btn');
 const exportBtn = document.getElementById('export-btn');
 const fpTitle = document.getElementById('fp-title');
+const fpBanner = document.getElementById('fp-banner');
 const fpContainer = document.getElementById('fp-container');
 const loadingOverlay = document.getElementById('loading-overlay');
 const loadingText = document.getElementById('loading-text');
@@ -30,6 +31,7 @@ let currentFpImageUrl = null;
 let currentFloorPlanView = null;
 let currentFpDims = null;
 let currentPins = [];
+let calibrationPending = false;
 
 let viewerPin = null;
 let viewerPhotos = [];
@@ -134,9 +136,17 @@ async function openFloorPlan(id) {
     onTapPin: handleTapPin,
   });
   currentFloorPlanView.setPins(currentPins);
+
+  calibrationPending = !fp.calibration;
+  fpBanner.style.display = calibrationPending ? 'block' : 'none';
+  if (calibrationPending) runCalibration(true);
 }
 
 async function handleTapEmpty(xNorm, yNorm) {
+  if (calibrationPending) {
+    runCalibration(true);
+    return;
+  }
   const blob = await Camera.capture();
   if (!blob) return;
   const pin = await DB.addPin({ floorPlanId: currentFloorPlan.id, xNorm, yNorm });
@@ -177,27 +187,36 @@ function formatPinDistance(pinA, pinB) {
   return `${display.toFixed(1)} ${cal.unit}`;
 }
 
-calibrateBtn.addEventListener('click', () => {
+function runCalibration(mandatory) {
   if (!currentFloorPlanView) return;
   if (currentFloorPlanView.isCalibrating()) {
-    currentFloorPlanView.cancelCalibration();
+    if (!mandatory) currentFloorPlanView.cancelCalibration();
     return;
   }
-  alert('Tap two points on the floor plan that are a known real-world distance apart (e.g. both ends of a hallway).');
+  if (!mandatory) {
+    alert('Tap two points on the floor plan that are a known real-world distance apart (e.g. both ends of a hallway).');
+  }
   currentFloorPlanView.startCalibration(async (p1, p2) => {
     const input = prompt('Real-world distance between those two points? (e.g. "12 m" or "40 ft")');
-    if (!input) return;
+    if (!input) {
+      if (mandatory) alert('Scale is required before you can take photos. Tap "Scale" to try again.');
+      return;
+    }
     const parsed = parseDistanceInput(input);
     if (!parsed) {
-      alert('Could not understand that distance. Try a format like "12 m" or "40 ft".');
+      alert('Could not understand that distance. Try a format like "12 m" or "40 ft".' + (mandatory ? ' Tap "Scale" to try again.' : ''));
       return;
     }
     const calibration = { p1, p2, realMeters: parsed.meters, unit: parsed.unit };
     await DB.updateFloorPlanCalibration(currentFloorPlan.id, calibration);
     currentFloorPlan.calibration = calibration;
-    alert('Scale calibrated. Pin-to-pin distances will now show when viewing a pin.');
+    calibrationPending = false;
+    fpBanner.style.display = 'none';
+    alert('Scale calibrated. ' + (mandatory ? 'You can now tap the floor plan to take photos.' : 'Pin-to-pin distances will now show when viewing a pin.'));
   });
-});
+}
+
+calibrateBtn.addEventListener('click', () => runCalibration(false));
 
 backBtn.addEventListener('click', () => {
   if (currentFloorPlanView) {

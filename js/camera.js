@@ -34,10 +34,6 @@ const Camera = {
       let stream = null;
       let capturedBlob = null;
 
-      // Disabled until the camera stream actually has frames, so a tap can't
-      // capture a blank frame before the video is ready.
-      shutterBtn.disabled = true;
-
       function cleanup(result) {
         if (stream) {
           stream.getTracks().forEach((t) => t.stop());
@@ -48,30 +44,51 @@ const Camera = {
 
       cancelBtn.addEventListener('click', () => cleanup(null));
 
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      function showError(message) {
         errorBox.style.display = 'block';
-        errorBox.textContent = 'Camera requires HTTPS (or localhost). This page was not loaded over a secure connection.';
-        shutterBtn.style.display = 'none';
-      } else {
-        navigator.mediaDevices
-          .getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false })
-          .then((s) => {
-            stream = s;
-            video.srcObject = s;
-            video.play().catch(() => {});
-            video.addEventListener('loadedmetadata', () => { shutterBtn.disabled = false; }, { once: true });
-          })
-          .catch((err) => {
-            errorBox.style.display = 'block';
-            errorBox.textContent = 'Camera unavailable: ' + (err.message || err.name || 'permission denied');
-            shutterBtn.style.display = 'none';
-          });
+        errorBox.textContent = message;
       }
 
+      async function startStream() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          showError('Camera requires HTTPS (or localhost). This page was not loaded over a secure connection.');
+          return;
+        }
+        const attempts = [
+          { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false },
+          { video: true, audio: false },
+        ];
+        let lastErr = null;
+        for (const constraints of attempts) {
+          try {
+            stream = await navigator.mediaDevices.getUserMedia(constraints);
+            break;
+          } catch (err) {
+            lastErr = err;
+          }
+        }
+        if (!stream) {
+          console.error('Camera getUserMedia failed:', lastErr);
+          showError('Camera unavailable: ' + (lastErr && (lastErr.message || lastErr.name) || 'permission denied'));
+          return;
+        }
+        video.srcObject = stream;
+        video.play().catch((err) => console.error('video.play() failed:', err));
+      }
+
+      startStream();
+
+      // Readiness is checked at click time rather than gated by a single
+      // 'loadedmetadata' listener — that event doesn't fire reliably on
+      // every browser, which previously left the shutter permanently inert.
       shutterBtn.addEventListener('click', () => {
         const w = video.videoWidth;
         const h = video.videoHeight;
-        if (!w || !h) return;
+        if (!w || !h) {
+          showError('Camera is still starting up — wait a second and try again.');
+          return;
+        }
+        errorBox.style.display = 'none';
         canvas.width = w;
         canvas.height = h;
         const ctx = canvas.getContext('2d');
