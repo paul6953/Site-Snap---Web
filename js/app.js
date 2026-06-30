@@ -38,6 +38,8 @@ let currentFloorPlanView = null;
 let currentPins       = [];
 let calibrationPending = false;
 let gpsUnsubscribe    = null;
+let smoothedPos       = null;   // exponential-moving-average position on the floor plan
+let lastPosTime       = 0;      // ms timestamp of the last accepted GPS fix
 
 let viewerPin    = null;
 let viewerPhotos = [];
@@ -155,7 +157,7 @@ async function openFloorPlan(id) {
 
   calibrationPending = !fp.calibration;
   if (calibrationPending) {
-    setBanner('Step 1 of 2: Stand at a known spot, then tap that exact location on the floor plan.');
+    setBanner('Step 1 of 2: Go outdoors for best GPS. Stand at a known spot (e.g. a column or door corner), then tap that exact location on the floor plan. Choose two points ≥ 10 m apart for best accuracy.');
     runCalibrationStep();
   } else {
     setBanner('');
@@ -233,18 +235,73 @@ function recalibrate() {
 }
 document.getElementById('calibrate-btn').addEventListener('click', recalibrate);
 
-// ─── Live GPS tracking ────────────────────────────────────────────────────────
+// ─── Live GPS tracking with smoothing ────────────────────────────────────────
+//
+// Raw GPS on a phone jumps ±5-20 m between readings even when standing still.
+// Three layers of filtering make the live-position dot usable in practice:
+//
+//  1. Accuracy gate  — drop readings worse than 80 m (pure noise at that level)
+//  2. Velocity cap   — walking speed on a site is ≤ 2 m/s; a larger single-
+//                      frame jump is a GPS glitch, so we clamp it
+//  3. Weighted EMA   — better-accuracy readings pull the smoothed position
+//                      toward them faster; poor readings barely move the dot
+//
+function applyPositionSmoothing(rawCoords, accuracyMetres, ppm, nowMs) {
+  const dt = Math.min((nowMs - lastPosTime) / 1000, 2); // seconds since last fix, capped at 2s
+  lastPosTime = nowMs;
+
+  if (!smoothedPos) {
+    smoothedPos = { xNorm: rawCoords.xNorm, yNorm: rawCoords.yNorm };
+    return smoothedPos;
+  }
+
+  // Velocity cap: max 2 m/s walking speed → max pixel jump per dt
+  const maxPixelJump = 2 * ppm * dt;
+  const dxPx = (rawCoords.xNorm - smoothedPos.xNorm) * (currentFpDims?.w || 1);
+  const dyPx = (rawCoords.yNorm - smoothedPos.yNorm) * (currentFpDims?.h || 1);
+  const jumpPx = Math.hypot(dxPx, dyPx);
+
+  let targetCoords = rawCoords;
+  if (jumpPx > maxPixelJump && maxPixelJump > 0) {
+    // Clamp the jump to the velocity limit
+    const scale = maxPixelJump / jumpPx;
+    targetCoords = {
+      xNorm: smoothedPos.xNorm + (rawCoords.xNorm - smoothedPos.xNorm) * scale,
+      yNorm: smoothedPos.yNorm + (rawCoords.yNorm - smoothedPos.yNorm) * scale,
+    };
+  }
+
+  // Weighted EMA: alpha ∝ GPS quality. Good fix (5 m) → alpha 0.7 (responsive).
+  // Poor fix (50 m) → alpha 0.07 (sluggish but stable).
+  const alpha = Math.min(0.85, Math.max(0.05, 3.5 / Math.max(1, accuracyMetres)));
+  smoothedPos = {
+    xNorm: smoothedPos.xNorm + alpha * (targetCoords.xNorm - smoothedPos.xNorm),
+    yNorm: smoothedPos.yNorm + alpha * (targetCoords.yNorm - smoothedPos.yNorm),
+  };
+  return smoothedPos;
+}
+
 function startLiveTracking() {
   if (gpsUnsubscribe) gpsUnsubscribe();
+  smoothedPos = null;
+  lastPosTime = 0;
+
   gpsUnsubscribe = GPS.onUpdate((pos) => {
     updateGpsStatus(pos);
     if (!currentFloorPlan?.calibration || !currentFpDims || !currentFloorPlanView) return;
-    const coords = gpsToFloorPlan(pos.lat, pos.lng, currentFloorPlan.calibration, currentFpDims);
-    if (!coords) return;
+
+    // Accuracy gate: readings worse than 80 m are useless for positioning
+    if (pos.accuracy > 80) return;
+
+    const raw = gpsToFloorPlan(pos.lat, pos.lng, currentFloorPlan.calibration, currentFpDims);
+    if (!raw) return;
+
     const ppm = pixelsPerMetre(currentFloorPlan.calibration, currentFpDims);
+    const smooth = applyPositionSmoothing(raw, pos.accuracy, ppm, Date.now());
+
     currentFloorPlanView.updateLivePosition(
-      Math.max(0, Math.min(1, coords.xNorm)),
-      Math.max(0, Math.min(1, coords.yNorm)),
+      Math.max(0, Math.min(1, smooth.xNorm)),
+      Math.max(0, Math.min(1, smooth.yNorm)),
       pos.accuracy,
       ppm
     );
@@ -290,6 +347,8 @@ takePhotoBtn.addEventListener('click', async () => {
 backBtn.addEventListener('click', () => {
   if (gpsUnsubscribe) { gpsUnsubscribe(); gpsUnsubscribe = null; }
   GPS.stop();
+  smoothedPos = null;
+  lastPosTime = 0;
   if (currentFloorPlanView) {
     if (currentFloorPlanView.isCalibrating()) currentFloorPlanView.cancelCalibration();
     currentFloorPlanView.destroy();

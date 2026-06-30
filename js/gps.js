@@ -24,7 +24,9 @@ const GPS = (() => {
           });
         },
         (err) => console.warn('GPS error:', err.code, err.message),
-        { enableHighAccuracy: true, maximumAge: 3000, timeout: 30000 }
+        // maximumAge:0 forces a fresh satellite fix every time — never serve
+        // a stale cached position, which is the biggest source of indoor drift.
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 }
       );
     },
 
