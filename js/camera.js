@@ -1,16 +1,13 @@
-// Full-screen camera capture.
-// Camera.capture({ lat, lng }) → Promise<Blob|null>
-// GPS coordinates are displayed live in the viewfinder and burned into the
-// captured frame along with the timestamp.
+// Full-screen camera. Camera.capture() → Promise<Blob|null>
+// Timestamp is burned into the bottom-right corner of every photo.
 const Camera = {
-  async capture({ lat, lng } = {}) {
+  async capture() {
     return new Promise((resolve) => {
       const overlay = document.createElement('div');
       overlay.className = 'camera-overlay';
       overlay.innerHTML = `
         <div class="camera-topbar">
           <button class="btn-icon camera-cancel" aria-label="Cancel">&#10005;</button>
-          <div class="camera-gps-badge"></div>
         </div>
         <video class="camera-video" autoplay playsinline muted></video>
         <canvas class="camera-canvas" style="display:none"></canvas>
@@ -28,7 +25,6 @@ const Camera = {
       const video       = overlay.querySelector('.camera-video');
       const canvas      = overlay.querySelector('.camera-canvas');
       const stampDiv    = overlay.querySelector('.camera-stamp-overlay');
-      const gpsBadge    = overlay.querySelector('.camera-gps-badge');
       const cancelBtn   = overlay.querySelector('.camera-cancel');
       const shutterBtn  = overlay.querySelector('.camera-shutter');
       const retakeBtn   = overlay.querySelector('.camera-retake');
@@ -40,31 +36,14 @@ const Camera = {
       let capturedBlob = null;
       let stampInterval = null;
 
-      if (lat != null && lng != null) {
-        const latStr = Math.abs(lat).toFixed(5) + (lat >= 0 ? '° N' : '° S');
-        const lngStr = Math.abs(lng).toFixed(5) + (lng >= 0 ? '° E' : '° W');
-        gpsBadge.textContent = `${latStr}  ${lngStr}`;
-      }
-
-      function getStampText() {
-        const time = new Date().toLocaleString(undefined, {
+      function updateStamp() {
+        stampDiv.textContent = new Date().toLocaleString(undefined, {
           year: 'numeric', month: 'short', day: 'numeric',
           hour: '2-digit', minute: '2-digit', second: '2-digit',
         });
-        if (lat != null && lng != null) {
-          const latStr = Math.abs(lat).toFixed(4) + (lat >= 0 ? '°N' : '°S');
-          const lngStr = Math.abs(lng).toFixed(4) + (lng >= 0 ? '°E' : '°W');
-          return `${time}\n${latStr}  ${lngStr}`;
-        }
-        return time;
       }
-
-      function updateStampOverlay() {
-        stampDiv.textContent = getStampText().replace('\n', '  ');
-      }
-
-      stampInterval = setInterval(updateStampOverlay, 1000);
-      updateStampOverlay();
+      stampInterval = setInterval(updateStamp, 1000);
+      updateStamp();
 
       function cleanup(result) {
         clearInterval(stampInterval);
@@ -85,17 +64,17 @@ const Camera = {
           catch (e) { console.warn('getUserMedia attempt failed:', e.name); }
         }
         if (!stream) {
-          shutterBtn.textContent = 'Camera unavailable';
-          shutterBtn.disabled = true;
+          stampDiv.textContent = 'Camera unavailable — check that this site has camera permission in Safari Settings.';
+          shutterBtn.style.display = 'none';
           return;
         }
         video.srcObject = stream;
         video.play().catch((e) => console.error('video.play():', e));
       }
 
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        shutterBtn.textContent = 'Camera requires HTTPS';
-        shutterBtn.disabled = true;
+      if (!navigator.mediaDevices?.getUserMedia) {
+        stampDiv.textContent = 'Camera requires HTTPS. Open via the GitHub Pages URL, not a local file.';
+        shutterBtn.style.display = 'none';
       } else {
         startStream();
       }
@@ -103,21 +82,23 @@ const Camera = {
       shutterBtn.addEventListener('click', () => {
         const w = video.videoWidth, h = video.videoHeight;
         if (!w || !h) {
-          shutterBtn.textContent = 'Starting…';
-          setTimeout(() => { shutterBtn.textContent = ''; }, 1500);
+          const prev = stampDiv.textContent;
+          stampDiv.textContent = 'Camera still starting — try again in a moment.';
+          setTimeout(() => { stampDiv.textContent = prev; }, 2000);
           return;
         }
 
+        const timestamp = stampDiv.textContent;
         canvas.width = w; canvas.height = h;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(video, 0, 0, w, h);
-        burnStamp(ctx, w, h, getStampText());
+        burnStamp(ctx, w, h, timestamp);
 
-        video.style.display = 'none';
-        canvas.style.display = 'block';
+        video.style.display   = 'none';
+        canvas.style.display  = 'block';
+        stampDiv.style.display = 'none';
         bottomBar.style.display = 'none';
         confirmRow.style.display = 'flex';
-        stampDiv.style.display = 'none';
         clearInterval(stampInterval);
 
         canvas.toBlob((blob) => { capturedBlob = blob; }, 'image/jpeg', 0.88);
@@ -125,13 +106,13 @@ const Camera = {
 
       retakeBtn.addEventListener('click', () => {
         capturedBlob = null;
-        canvas.style.display = 'none';
-        video.style.display = 'block';
+        canvas.style.display   = 'none';
+        video.style.display    = 'block';
+        stampDiv.style.display = 'block';
         bottomBar.style.display = 'flex';
         confirmRow.style.display = 'none';
-        stampDiv.style.display = 'block';
-        stampInterval = setInterval(updateStampOverlay, 1000);
-        updateStampOverlay();
+        stampInterval = setInterval(updateStamp, 1000);
+        updateStamp();
       });
 
       useBtn.addEventListener('click', () => {
@@ -142,27 +123,21 @@ const Camera = {
 };
 
 function burnStamp(ctx, w, h, text) {
-  const lines = text.split('\n');
   const fontSize = Math.max(16, Math.round(h * 0.028));
   ctx.font = `bold ${fontSize}px sans-serif`;
-  const lineH = fontSize * 1.35;
   const padding = fontSize * 0.55;
-  const maxW = Math.max(...lines.map((l) => ctx.measureText(l).width));
-  const boxH = lineH * lines.length + padding * 2;
-  const boxW = maxW + padding * 2;
-
-  // Bottom-right corner
-  const bx = w - boxW - 12;
-  const by = h - boxH - 12;
+  const textW   = ctx.measureText(text).width;
+  const boxW    = textW + padding * 2;
+  const boxH    = fontSize + padding * 2;
+  const bx      = w - boxW - 12;
+  const by      = h - boxH - 12;
 
   ctx.fillStyle = 'rgba(0,0,0,0.55)';
   ctx.beginPath();
   ctx.roundRect(bx, by, boxW, boxH, 6);
   ctx.fill();
 
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle    = '#ffffff';
   ctx.textBaseline = 'top';
-  lines.forEach((line, i) => {
-    ctx.fillText(line, bx + padding, by + padding + i * lineH);
-  });
+  ctx.fillText(text, bx + padding, by + padding);
 }

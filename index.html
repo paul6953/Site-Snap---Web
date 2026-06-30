@@ -29,19 +29,10 @@
     <header class="topbar">
       <button id="back-btn" class="btn-icon" aria-label="Back">&larr;</button>
       <h1 id="fp-title">Floor Plan</h1>
-      <span id="gps-status" class="gps-status gps-weak">GPS…</span>
-      <button id="calibrate-btn" class="btn btn-secondary btn-sm">Recalibrate</button>
       <button id="export-btn" class="btn btn-primary btn-sm">Export PDF</button>
     </header>
-    <div id="fp-banner" class="fp-banner" style="display:none"></div>
     <div id="fp-container" class="fp-root"></div>
-    <div class="fp-bottom-bar">
-      <button id="im-here-btn" class="im-here-btn">&#128205; I'm Here</button>
-      <button id="take-photo-btn" class="take-photo-btn">
-        <span class="take-photo-icon">&#9679;</span>
-        Take Photo
-      </button>
-    </div>
+    <p class="hint">Tap anywhere on the floor plan to take a timestamped photo at that location. Tap a numbered dot to view its photos.</p>
   </div>
 
   <!-- ── Photo viewer ── -->
@@ -51,7 +42,6 @@
       <input id="pv-note" class="pv-note-input" placeholder="Note for this location…" />
       <button id="pv-add-photo" class="btn btn-secondary">+ Revisit</button>
     </div>
-    <div id="pv-distance" class="pv-distance"></div>
     <div class="modal-body">
       <button id="pv-prev" class="pv-nav" aria-label="Previous">&lsaquo;</button>
       <div class="pv-photo-area">
@@ -76,8 +66,6 @@
   <script src="js/vendor/pdf.min.js"></script>
   <script src="js/pdfimport.js"></script>
   <script src="js/db.js"></script>
-  <script src="js/gps.js"></script>
-  <script src="js/calibration.js"></script>
   <script src="js/camera.js"></script>
   <script src="js/floorplan.js"></script>
   <script src="js/export.js"></script>
