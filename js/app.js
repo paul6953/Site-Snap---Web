@@ -171,37 +171,45 @@ function runCalibrationStep() {
   if (currentFloorPlanView.isCalibrating()) return;
 
   currentFloorPlanView.startCalibration(async (point, tapIndex) => {
-    const gps = GPS.getPosition();
-    if (!gps) {
-      alert('No GPS fix yet — the GPS status bar must show green before you calibrate.\n\nMake sure Location Services are enabled for this site, then try the two taps again.');
+    try {
+      const gps = GPS.getPosition();
+      if (!gps) {
+        alert('No GPS fix yet.\n\nMake sure Location Services are enabled for this site in Safari Settings, wait for the GPS bar to turn green, then tap the two points again.');
+        calibFirst = null;
+        currentFloorPlanView.cancelCalibration();
+        currentFloorPlanView.clearCalibMarkers();
+        setBanner('Step 1 of 2: Stand at a known spot, then tap that exact location on the floor plan.');
+        setTimeout(runCalibrationStep, 50);
+        return;
+      }
+
+      if (tapIndex === 1) {
+        calibFirst = { xNorm: point.xNorm, yNorm: point.yNorm, lat: gps.lat, lng: gps.lng };
+        setBanner('Step 2 of 2: Walk to a DIFFERENT reference point, stand there, then tap that location.');
+      } else if (tapIndex === 2) {
+        if (!calibFirst) {
+          // Should not happen, but guard against it
+          alert('Something went wrong — please tap the two reference points again.');
+          currentFloorPlanView.clearCalibMarkers();
+          setBanner('Step 1 of 2: Stand at a known spot, then tap that exact location on the floor plan.');
+          setTimeout(runCalibrationStep, 50);
+          return;
+        }
+        const p2 = { xNorm: point.xNorm, yNorm: point.yNorm, lat: gps.lat, lng: gps.lng };
+        await saveCalibration(calibFirst, p2);
+      }
+    } catch (err) {
+      console.error('Calibration error:', err);
+      alert('Calibration error: ' + err.message + '\n\nPlease try again.');
       calibFirst = null;
-      currentFloorPlanView.cancelCalibration();
       currentFloorPlanView.clearCalibMarkers();
       setBanner('Step 1 of 2: Stand at a known spot, then tap that exact location on the floor plan.');
       setTimeout(runCalibrationStep, 50);
-      return;
-    }
-
-    if (tapIndex === 1) {
-      calibFirst = { xNorm: point.xNorm, yNorm: point.yNorm, lat: gps.lat, lng: gps.lng };
-      setBanner('Step 2 of 2: Walk to a DIFFERENT reference point, stand there, then tap that location.');
-    } else if (tapIndex === 2) {
-      const p2 = { xNorm: point.xNorm, yNorm: point.yNorm, lat: gps.lat, lng: gps.lng };
-      await saveCalibration(calibFirst, p2);
     }
   });
 }
 
 async function saveCalibration(p1, p2) {
-  const dist = gpsDistanceMetres(p1.lat, p1.lng, p2.lat, p2.lng);
-  if (dist < 0.1) {
-    alert('GPS returned the same position for both points — the phone may not have a fresh fix yet. Wait for the GPS indicator to turn green, then tap the two reference points again.');
-    currentFloorPlanView.clearCalibMarkers();
-    calibFirst = null;
-    setBanner('Step 1 of 2: Stand at a known spot, then tap that exact location on the floor plan.');
-    runCalibrationStep();
-    return;
-  }
   const calibration = { p1, p2 };
   await DB.updateFloorPlanCalibration(currentFloorPlan.id, calibration);
   currentFloorPlan.calibration = calibration;

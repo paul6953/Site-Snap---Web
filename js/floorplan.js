@@ -131,10 +131,11 @@ function createFloorPlanView(container, { imageUrl, naturalWidth, naturalHeight,
   }
 
   viewport.addEventListener('click', (e) => {
-    if (gestureMoved) return;
     const pt = normFromEvent(e);
 
     if (calibrationMode) {
+      // Never filter calibration taps by gestureMoved — a slightly drifting
+      // finger on a touchscreen would silently drop the tap with no feedback.
       calibTapCount++;
       renderCalibMarker(pt.xNorm, pt.yNorm, String(calibTapCount));
       const idx = calibTapCount;
@@ -143,7 +144,9 @@ function createFloorPlanView(container, { imageUrl, naturalWidth, naturalHeight,
       cb && cb(pt, idx);
       return;
     }
-    // Normal mode: empty-area taps do nothing — camera launched by bottom button.
+
+    // Normal mode: only filter taps that were actually a drag.
+    if (gestureMoved) return;
   });
 
   // --- Pin markers ---
