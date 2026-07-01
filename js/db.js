@@ -83,8 +83,8 @@ const DB = {
   },
 
   // --- Pins ---
-  async addPin({ floorPlanId, xNorm, yNorm, lat, lng, note }) {
-    const record = { id: uid(), floorPlanId, xNorm, yNorm, lat: lat ?? null, lng: lng ?? null, note: note || null, createdAt: Date.now() };
+  async addPin({ floorPlanId, xNorm, yNorm, lat, lng, name, color, note }) {
+    const record = { id: uid(), floorPlanId, xNorm, yNorm, lat: lat ?? null, lng: lng ?? null, name: name || null, color: color || '#d62828', note: note || null, createdAt: Date.now() };
     const t = await tx('pins', 'readwrite');
     await promisifyRequest(t.objectStore('pins').add(record));
     return record;
@@ -101,13 +101,31 @@ const DB = {
     return promisifyRequest(t.objectStore('pins').get(id));
   },
 
-  async updatePinNote(id, note) {
+  async updatePin(id, fields) {
     const t = await tx('pins', 'readwrite');
     const store = t.objectStore('pins');
     const pin = await promisifyRequest(store.get(id));
     if (!pin) return;
-    pin.note = note || null;
+    Object.assign(pin, fields);
     await promisifyRequest(store.put(pin));
+  },
+
+  async updatePhotoCaption(id, caption) {
+    const t = await tx('photos', 'readwrite');
+    const store = t.objectStore('photos');
+    const photo = await promisifyRequest(store.get(id));
+    if (!photo) return;
+    photo.caption = caption || null;
+    await promisifyRequest(store.put(photo));
+  },
+
+  async renameFloorPlan(id, name) {
+    const t = await tx('floorPlans', 'readwrite');
+    const store = t.objectStore('floorPlans');
+    const fp = await promisifyRequest(store.get(id));
+    if (!fp) return;
+    fp.name = name;
+    await promisifyRequest(store.put(fp));
   },
 
   async deletePin(id) {
@@ -121,8 +139,8 @@ const DB = {
   },
 
   // --- Photos ---
-  async addPhoto({ pinId, blob, note }) {
-    const record = { id: uid(), pinId, blob, note: note || null, capturedAt: Date.now() };
+  async addPhoto({ pinId, blob, caption, note }) {
+    const record = { id: uid(), pinId, blob, caption: caption || null, note: note || null, capturedAt: Date.now() };
     const t = await tx('photos', 'readwrite');
     await promisifyRequest(t.objectStore('photos').add(record));
     return record;
