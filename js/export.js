@@ -1,57 +1,51 @@
-// PDF export — US Letter, 72 dpi points.
-// Page 1 : full floor plan with coloured numbered markers + optional legend.
-// Pages 2+: one section per pin — 2 × 3 photo grid with captions.
-//           Each photo page links back to page 1; each floor-plan marker
-//           links forward to its photo page (real PDF GoTo annotations).
+// PDF export — continuous-flow 2-column layout.
+// Page 1: full floor plan with numbered coloured markers.
+// Subsequent pages: all pins' photos flow through a shared 2-column grid.
+// Each pin is introduced by a full-width section header; photos follow in the
+// grid until the page is full, then continue on the next page.
 
-const PW = 612, PH = 792, M = 36;       // page width/height/margin
-const COLS = 2, ROWS = 3;               // photo grid columns/rows
-const COL_GAP = 12, ROW_GAP = 12;
+const PW = 612, PH = 792, M = 36;
+const COLS = 2, COL_GAP = 14;
+const CELL_W  = (PW - M * 2 - COL_GAP) / COLS;   // 264 pt
+const CELL_H  = 210;                               // photo cell total height
+const IMG_H   = 170;                               // image area inside cell
+const CAP_H   = CELL_H - IMG_H;                   // 40 pt for date + caption
+const ROW_GAP = 12;
+const HDR_H   = 28;                               // section header row height
+const GRID_TOP = M;                               // grid starts at top margin on each page
+const MAX_Y    = PH - M;                          // bottom margin
 
-const cellW = (PW - M * 2 - COL_GAP) / COLS;            // 264
-const HDR_H = 62;                                         // per-pin page header height
-const gridH = PH - M - (M + HDR_H);                      // available grid height
-const cellH = (gridH - ROW_GAP * (ROWS - 1)) / ROWS;     // per cell
-const imgH  = cellH - 26;                                 // photo image height (26 for caption)
-const CELLS_PER_PAGE = COLS * ROWS;                       // 6
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
+// ─── Utilities ───────────────────────────────────────────────────────────────
 function hexToRgb(hex) {
-  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || '#d62828');
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || '#007AFF');
   return m ? { r: parseInt(m[1],16), g: parseInt(m[2],16), b: parseInt(m[3],16) }
-           : { r: 214, g: 40, b: 40 };
+           : { r: 0, g: 122, b: 255 };
 }
-
-function dataUrlFormat(dataUrl) {
+function imgFmt(dataUrl) {
   return dataUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG';
 }
-
-async function loadMeta(blob) {
-  return new Promise((resolve, reject) => {
+function loadMeta(blob) {
+  return new Promise((res, rej) => {
     const url = URL.createObjectURL(blob);
-    const img = new Image();
-    img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight, url });
-    img.onerror = reject;
-    img.src = url;
+    const i = new Image();
+    i.onload = () => res({ w: i.naturalWidth, h: i.naturalHeight, url });
+    i.onerror = rej;
+    i.src = url;
   });
 }
-
-function blobToDataUrl(blob) {
-  return new Promise((resolve, reject) => {
+function toDataUrl(blob) {
+  return new Promise((res, rej) => {
     const r = new FileReader();
-    r.onload  = () => resolve(r.result);
-    r.onerror = reject;
+    r.onload = () => res(r.result); r.onerror = rej;
     r.readAsDataURL(blob);
   });
 }
-
-function aspectFitRect(iw, ih, box) {
-  const s = Math.min(box.w / iw, box.h / ih);
-  return { x: box.x + (box.w - iw * s) / 2, y: box.y + (box.h - ih * s) / 2, w: iw * s, h: ih * s };
+function aspectFit(iw, ih, bw, bh) {
+  const s = Math.min(bw / iw, bh / ih);
+  return { w: iw * s, h: ih * s };
 }
 
-function drawPinMarker(doc, num, cx, cy, colorHex) {
+function drawMarker(doc, num, cx, cy, colorHex) {
   const r = 10;
   const { r: cr, g: cg, b: cb } = hexToRgb(colorHex);
   doc.setFillColor(cr, cg, cb);
@@ -65,155 +59,159 @@ function drawPinMarker(doc, num, cx, cy, colorHex) {
   doc.text(String(num), cx, cy, { align: 'center', baseline: 'middle' });
 }
 
-// ─── Main export function ────────────────────────────────────────────────────
+// ─── Layout engine ────────────────────────────────────────────────────────────
+// Simulates placing items without drawing; returns {pageNumber, y, col} per item.
+function simulate(items) {
+  let page = 1, y = GRID_TOP, col = 0;
+  const layout = [];
 
+  for (const item of items) {
+    if (item.type === 'header') {
+      if (col > 0) { col = 0; y += CELL_H + ROW_GAP; } // finish row
+      if (y + HDR_H + CELL_H > MAX_Y && y > GRID_TOP) { page++; y = GRID_TOP; col = 0; }
+      layout.push({ page, y, col: 0 });
+      y += HDR_H;
+    } else {
+      if (col >= COLS) { col = 0; y += CELL_H + ROW_GAP; }
+      if (y + CELL_H > MAX_Y && y > GRID_TOP) { page++; y = GRID_TOP; col = 0; }
+      layout.push({ page, y, col });
+      col++;
+    }
+  }
+  return { layout, totalPages: page };
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
 async function exportFloorPlanPdf(floorPlan, pins, photosByPin) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
 
-  // Pre-compute first-page number for each pin (for GoTo links)
-  let pageCounter = 2;
-  const firstPage = pins.map((pin) => {
-    const start = pageCounter;
-    const photos = photosByPin[pin.id] || [];
-    pageCounter += Math.max(1, Math.ceil(photos.length / CELLS_PER_PAGE));
-    return start;
-  });
-
-  // ── Page 1: floor plan overview ──────────────────────────────────────────
-  const fpMeta = await loadMeta(floorPlan.imageBlob);
-  const fpUrl  = await blobToDataUrl(floorPlan.imageBlob);
-  const fpFmt  = dataUrlFormat(fpUrl);
-  URL.revokeObjectURL(fpMeta.url);
-
-  // Title
-  doc.setFont(undefined, 'bold');
-  doc.setFontSize(16);
-  doc.setTextColor(15, 34, 64);
-  doc.text(floorPlan.name, M, M + 12);
-
-  // Legend (show if any pin has a name)
-  const namedPins = pins.filter((p) => p.name);
-  const legendH = namedPins.length ? Math.min(namedPins.length, 8) * 14 + 20 : 0;
-
-  const imageBox = { x: M, y: M + 28, w: PW - M * 2, h: PH - M * 2 - 28 - legendH - (legendH ? 10 : 0) };
-  const fit = aspectFitRect(fpMeta.w, fpMeta.h, imageBox);
-  doc.addImage(fpUrl, fpFmt, fit.x, fit.y, fit.w, fit.h);
-
-  // Draw coloured markers + add GoTo links
-  pins.forEach((pin, i) => {
-    const cx = fit.x + pin.xNorm * fit.w;
-    const cy = fit.y + pin.yNorm * fit.h;
-    drawPinMarker(doc, i + 1, cx, cy, pin.color);
-    doc.link(cx - 11, cy - 11, 22, 22, { pageNumber: firstPage[i] });
-  });
-
-  // Legend block
-  if (legendH) {
-    const ly0 = fit.y + fit.h + 10;
-    doc.setFontSize(8);
-    doc.setFont(undefined, 'bold');
-    doc.setTextColor(80, 80, 80);
-    doc.text('LEGEND', M, ly0 + 8);
-    namedPins.slice(0, 8).forEach((pin, i) => {
-      const idx = pins.indexOf(pin);
-      const ly = ly0 + 20 + i * 14;
-      const { r, g, b } = hexToRgb(pin.color);
-      doc.setFillColor(r, g, b);
-      doc.circle(M + 5, ly, 4, 'F');
-      doc.setFont(undefined, 'normal');
-      doc.setTextColor(30, 30, 30);
-      doc.text(`${idx + 1}  ${pin.name}`, M + 14, ly + 1, { baseline: 'middle' });
-    });
-  }
-
-  // ── Per-pin pages ─────────────────────────────────────────────────────────
+  // Build flat item list and collect photos for loading
+  const items = [];
   for (let i = 0; i < pins.length; i++) {
     const pin    = pins[i];
     const photos = photosByPin[pin.id] || [];
-    const pages  = Math.max(1, Math.ceil(photos.length / CELLS_PER_PAGE));
+    items.push({ type: 'header', pin, pinIndex: i });
+    for (const photo of photos) {
+      items.push({ type: 'photo', photo, pin, pinIndex: i });
+    }
+  }
 
-    for (let p = 0; p < pages; p++) {
+  // Simulate layout to get page numbers per item (for GoTo links on floor plan)
+  const { layout } = simulate(items);
+
+  // Map pinIndex → first page in the body (offset by 1 for the floor-plan page)
+  const pinFirstPage = {};
+  layout.forEach((pos, idx) => {
+    if (items[idx].type === 'header') {
+      const { pinIndex } = items[idx];
+      if (pinFirstPage[pinIndex] === undefined) pinFirstPage[pinIndex] = pos.page + 1;
+    }
+  });
+
+  // ── Page 1: floor plan ───────────────────────────────────────────────────
+  const fpMeta  = await loadMeta(floorPlan.imageBlob);
+  const fpData  = await toDataUrl(floorPlan.imageBlob);
+  URL.revokeObjectURL(fpMeta.url);
+
+  const titleH = 32;
+  const imgBox = { w: PW - M * 2, h: PH - M * 2 - titleH };
+  const fpFit  = aspectFit(fpMeta.w, fpMeta.h, imgBox.w, imgBox.h);
+  const fpX    = M + (imgBox.w - fpFit.w) / 2;
+  const fpY    = M + titleH;
+
+  doc.setFont(undefined, 'bold');
+  doc.setFontSize(14);
+  doc.setTextColor(0, 0, 0);
+  doc.text(floorPlan.name, M, M + 16);
+
+  doc.addImage(fpData, imgFmt(fpData), fpX, fpY, fpFit.w, fpFit.h);
+
+  pins.forEach((pin, i) => {
+    const cx = fpX + pin.xNorm * fpFit.w;
+    const cy = fpY + pin.yNorm * fpFit.h;
+    drawMarker(doc, i + 1, cx, cy, pin.color);
+    const targetPage = pinFirstPage[i];
+    if (targetPage) doc.link(cx - 12, cy - 12, 24, 24, { pageNumber: targetPage });
+  });
+
+  if (items.length === 0) { doc.save(`SiteSnap-${floorPlan.name}.pdf`); return; }
+
+  // ── Body pages: continuous 2-col flow ────────────────────────────────────
+  let currentPage = 1;
+  doc.addPage(); // body starts on page 2
+
+  for (let idx = 0; idx < items.length; idx++) {
+    const item = items[idx];
+    const { page, y, col } = layout[idx];
+
+    // Switch to the correct page
+    while (currentPage < page) {
       doc.addPage();
-
-      // Back link
+      currentPage++;
+      // "< Floor Plan" back link on every body page
       doc.setFont(undefined, 'normal');
       doc.setFontSize(8);
-      doc.setTextColor(30, 80, 180);
-      doc.text('‹ Floor Plan', M, M + 5);
-      doc.link(M, M - 4, 60, 12, { pageNumber: 1 });
+      doc.setTextColor(0, 122, 255);
+      doc.text('‹ Floor Plan', M, M - 6);
+      doc.link(M, M - 14, 55, 11, { pageNumber: 1 });
+    }
 
-      // Pin header
-      const pinLabel = `Pin ${i + 1}${pin.name ? '  —  ' + pin.name : ''}`;
+    const cellX = M + col * (CELL_W + COL_GAP);
+
+    if (item.type === 'header') {
+      const { pin, pinIndex } = item;
+      const label = `Pin ${pinIndex + 1}${pin.name ? '  —  ' + pin.name : ''}`;
       doc.setFont(undefined, 'bold');
-      doc.setFontSize(15);
-      doc.setTextColor(15, 34, 64);
-      doc.text(pinLabel, M, M + 22);
+      doc.setFontSize(11);
+      doc.setTextColor(0, 0, 0);
+      doc.text(label, M, y + 10);
 
-      // Colour swatch next to pin number
+      // Colour swatch
       const { r: cr, g: cg, b: cb } = hexToRgb(pin.color);
       doc.setFillColor(cr, cg, cb);
-      doc.circle(PW - M - 8, M + 18, 7, 'F');
+      doc.circle(PW - M - 8, y + 7, 5, 'F');
 
       if (pin.note) {
         doc.setFont(undefined, 'normal');
-        doc.setFontSize(9);
-        doc.setTextColor(90, 90, 90);
-        doc.text(pin.note, M, M + 38, { maxWidth: PW - M * 2 });
-      }
-
-      if (photos.length === 0) {
-        doc.setFontSize(10);
-        doc.setTextColor(150, 150, 150);
-        doc.text('No photos yet.', M, M + HDR_H + 20);
-        continue;
-      }
-
-      const slice = photos.slice(p * CELLS_PER_PAGE, (p + 1) * CELLS_PER_PAGE);
-      const gridTop = M + HDR_H;
-
-      for (let s = 0; s < slice.length; s++) {
-        const photo = slice[s];
-        const col   = s % COLS;
-        const row   = Math.floor(s / COLS);
-        const cellX = M + col * (cellW + COL_GAP);
-        const cellY = gridTop + row * (cellH + ROW_GAP);
-
-        const meta   = await loadMeta(photo.blob);
-        const dataUrl = await blobToDataUrl(photo.blob);
-        const fmt    = dataUrlFormat(dataUrl);
-        URL.revokeObjectURL(meta.url);
-
-        const imgRect = aspectFitRect(meta.w, meta.h, { x: cellX, y: cellY, w: cellW, h: imgH });
-        doc.addImage(dataUrl, fmt, imgRect.x, imgRect.y, imgRect.w, imgRect.h);
-
-        // Thin border around image
-        doc.setDrawColor(220, 220, 220);
-        doc.setLineWidth(0.5);
-        doc.rect(imgRect.x, imgRect.y, imgRect.w, imgRect.h, 'S');
-
-        // Date
-        const captionY = cellY + imgH + 8;
-        doc.setFont(undefined, 'normal');
         doc.setFontSize(8);
-        doc.setTextColor(110, 110, 110);
-        doc.text(new Date(photo.capturedAt).toLocaleString(), cellX, captionY);
-
-        // User caption
-        if (photo.caption) {
-          doc.setFont(undefined, 'bold');
-          doc.setFontSize(8.5);
-          doc.setTextColor(30, 30, 30);
-          doc.text(photo.caption, cellX, captionY + 12, { maxWidth: cellW });
-        }
+        doc.setTextColor(100, 100, 100);
+        doc.text(pin.note, M, y + 22, { maxWidth: PW - M * 2 - 20 });
       }
 
-      // Page number footer
-      const totalPages = firstPage[i] + pages - 2;
+      // Horizontal rule
+      doc.setDrawColor(220, 220, 220);
+      doc.setLineWidth(0.5);
+      doc.line(M, y + HDR_H - 4, PW - M, y + HDR_H - 4);
+
+    } else {
+      const { photo } = item;
+      const meta = await loadMeta(photo.blob);
+      const data = await toDataUrl(photo.blob);
+      URL.revokeObjectURL(meta.url);
+
+      const { w: iw, h: ih } = aspectFit(meta.w, meta.h, CELL_W, IMG_H);
+      const ix = cellX + (CELL_W - iw) / 2;
+      doc.addImage(data, imgFmt(data), ix, y, iw, ih);
+
+      // Thin image border
+      doc.setDrawColor(235, 235, 235);
+      doc.setLineWidth(0.5);
+      doc.rect(ix, y, iw, ih, 'S');
+
+      // Date
       doc.setFont(undefined, 'normal');
-      doc.setFontSize(7);
-      doc.setTextColor(160, 160, 160);
-      doc.text(`Pin ${i + 1}  —  Page ${p + 1} of ${pages}`, PW - M, PH - M + 4, { align: 'right' });
+      doc.setFontSize(8);
+      doc.setTextColor(140, 140, 140);
+      doc.text(new Date(photo.capturedAt).toLocaleString(), cellX, y + IMG_H + 12);
+
+      // Caption (bold, second line)
+      if (photo.caption) {
+        doc.setFont(undefined, 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(30, 30, 30);
+        doc.text(photo.caption, cellX, y + IMG_H + 24, { maxWidth: CELL_W });
+      }
     }
   }
 

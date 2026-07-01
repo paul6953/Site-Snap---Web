@@ -4,131 +4,127 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>SiteSnap</title>
-  <meta name="theme-color" content="#0d2240" />
+  <meta name="theme-color" content="#ffffff" />
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
 
-  <!-- ═══ Home ═══════════════════════════════════════════════════════════════ -->
+  <!-- Home ──────────────────────────────────────────────────────────────── -->
   <div id="screen-home" class="screen">
-    <header class="topbar">
-      <div class="topbar-brand">
-        <span class="topbar-logo">⬡</span>
-        <h1>SiteSnap</h1>
-      </div>
-      <button id="import-btn" class="btn btn-accent">+ Upload</button>
+    <header class="nav">
+      <h1 class="nav-title">SiteSnap</h1>
+      <button id="import-btn" class="nav-action">Upload</button>
     </header>
     <input type="file" id="import-input" accept="image/*,application/pdf" hidden />
     <div id="floorplan-list" class="list"></div>
     <div id="empty-state" class="empty-state" style="display:none">
-      <div class="empty-icon">📐</div>
-      <p>No floor plans yet.</p>
-      <p class="empty-sub">Upload a PDF or image to start documenting.</p>
+      <p class="empty-icon">🗂</p>
+      <p class="empty-title">No Floor Plans</p>
+      <p class="empty-body">Upload a PDF or image to start documenting your site.</p>
     </div>
   </div>
 
-  <!-- ═══ Floor plan ═══════════════════════════════════════════════════════════ -->
+  <!-- Floor plan ─────────────────────────────────────────────────────────── -->
   <div id="screen-floorplan" class="screen" style="display:none">
-    <header class="topbar">
-      <button id="back-btn" class="icon-btn" aria-label="Back">←</button>
-      <h1 id="fp-title" class="topbar-title">Floor Plan</h1>
-      <button id="edit-btn"   class="btn btn-ghost">Edit</button>
-      <button id="export-btn" class="btn btn-accent-sm">Export PDF</button>
+    <header class="nav">
+      <button id="back-btn" class="nav-back">‹ Back</button>
+      <h1 id="fp-title" class="nav-title-center">Floor Plan</h1>
+      <button id="edit-btn" class="nav-action">Edit</button>
     </header>
     <div id="fp-banner" class="fp-banner" style="display:none"></div>
     <div id="fp-container" class="fp-root"></div>
-    <!-- Colour picker -->
-    <div id="color-bar" class="color-bar">
-      <span class="color-bar-label">Pin colour</span>
-      <div class="color-dots" id="color-dots">
-        <button class="cdot active" data-color="#ef4444" style="background:#ef4444" title="Red"></button>
-        <button class="cdot" data-color="#f97316" style="background:#f97316" title="Orange"></button>
-        <button class="cdot" data-color="#eab308" style="background:#eab308" title="Yellow"></button>
-        <button class="cdot" data-color="#22c55e" style="background:#22c55e" title="Green"></button>
-        <button class="cdot" data-color="#3b82f6" style="background:#3b82f6" title="Blue"></button>
-        <button class="cdot" data-color="#a855f7" style="background:#a855f7" title="Purple"></button>
+
+    <!-- Colour picker bar (hidden in edit mode) -->
+    <div id="color-bar" class="bottom-bar color-bar">
+      <span class="color-bar-label">Colour</span>
+      <div id="color-dots" class="color-dots">
+        <button class="cdot active" data-color="#007AFF" style="background:#007AFF"></button>
+        <button class="cdot" data-color="#FF3B30" style="background:#FF3B30"></button>
+        <button class="cdot" data-color="#FF9500" style="background:#FF9500"></button>
+        <button class="cdot" data-color="#34C759" style="background:#34C759"></button>
+        <button class="cdot" data-color="#AF52DE" style="background:#AF52DE"></button>
+        <button class="cdot" data-color="#5AC8FA" style="background:#5AC8FA"></button>
       </div>
+      <button id="export-btn" class="text-btn">Export PDF</button>
     </div>
-    <p class="hint">Tap the floor plan to take a photo at that location. Tap a pin to view photos.</p>
-    <!-- Edit-mode toolbar (hidden in normal mode) -->
-    <div id="edit-toolbar" class="edit-toolbar" style="display:none">
-      <span class="edit-info">Drag pins to move · Tap to edit</span>
-      <button id="add-pin-btn" class="btn btn-accent-sm">+ Add Pin</button>
+
+    <!-- Edit toolbar (shown in edit mode) -->
+    <div id="edit-toolbar" class="bottom-bar edit-bar" style="display:none">
+      <span class="edit-hint">Drag to move · Tap to edit</span>
+      <button id="add-pin-btn" class="text-btn">+ Add Pin</button>
     </div>
+
+    <p class="hint">Tap the floor plan to photograph and pin that location.</p>
   </div>
 
-  <!-- ═══ Post-photo label sheet ════════════════════════════════════════════ -->
+  <!-- Post-photo label sheet ─────────────────────────────────────────────── -->
   <div id="label-sheet" class="sheet-overlay" style="display:none">
     <div class="sheet">
       <div class="sheet-handle"></div>
-      <h3 class="sheet-title">Label this pin <span class="sheet-opt">— optional</span></h3>
-      <label class="field-label">Pin name</label>
-      <input id="ls-name" class="field-input" type="text" placeholder="e.g. North stairwell" maxlength="60" />
-      <label class="field-label">Description</label>
-      <textarea id="ls-note" class="field-input field-textarea" placeholder="Notes about this location…" rows="2"></textarea>
-      <label class="field-label">Photo caption</label>
-      <input id="ls-caption" class="field-input" type="text" placeholder="Caption for this photo" maxlength="120" />
-      <div class="sheet-actions">
-        <button id="ls-skip" class="btn btn-ghost-dark">Skip</button>
-        <button id="ls-save" class="btn btn-accent">Save</button>
+      <p class="sheet-title">Label this pin</p>
+      <p class="sheet-sub">All fields are optional</p>
+      <input id="ls-name"    class="field" type="text"  placeholder="Pin name (e.g. North stairwell)" maxlength="60" />
+      <textarea id="ls-note" class="field field-area"   placeholder="Description…" rows="2"></textarea>
+      <input id="ls-caption" class="field" type="text"  placeholder="Photo caption" maxlength="120" />
+      <div class="sheet-row">
+        <button id="ls-skip" class="sheet-btn secondary">Skip</button>
+        <button id="ls-save" class="sheet-btn primary">Save</button>
       </div>
     </div>
   </div>
 
-  <!-- ═══ Pin edit sheet (edit mode) ═══════════════════════════════════════ -->
+  <!-- Pin edit sheet (edit mode) ─────────────────────────────────────────── -->
   <div id="pin-edit-sheet" class="sheet-overlay" style="display:none">
     <div class="sheet">
       <div class="sheet-handle"></div>
-      <h3 class="sheet-title" id="pes-heading">Edit Pin</h3>
-      <label class="field-label">Pin name</label>
-      <input id="pes-name" class="field-input" type="text" placeholder="e.g. North stairwell" maxlength="60" />
-      <label class="field-label">Description</label>
-      <textarea id="pes-note" class="field-input field-textarea" rows="2"></textarea>
-      <label class="field-label">Colour</label>
-      <div class="color-dots" id="pes-color-dots">
-        <button class="cdot" data-color="#ef4444" style="background:#ef4444"></button>
-        <button class="cdot" data-color="#f97316" style="background:#f97316"></button>
-        <button class="cdot" data-color="#eab308" style="background:#eab308"></button>
-        <button class="cdot" data-color="#22c55e" style="background:#22c55e"></button>
-        <button class="cdot" data-color="#3b82f6" style="background:#3b82f6"></button>
-        <button class="cdot" data-color="#a855f7" style="background:#a855f7"></button>
+      <p id="pes-heading" class="sheet-title">Edit Pin</p>
+      <input id="pes-name" class="field" type="text" placeholder="Pin name" maxlength="60" />
+      <textarea id="pes-note" class="field field-area" placeholder="Description…" rows="2"></textarea>
+      <p class="field-label">Colour</p>
+      <div id="pes-color-dots" class="color-dots">
+        <button class="cdot" data-color="#007AFF" style="background:#007AFF"></button>
+        <button class="cdot" data-color="#FF3B30" style="background:#FF3B30"></button>
+        <button class="cdot" data-color="#FF9500" style="background:#FF9500"></button>
+        <button class="cdot" data-color="#34C759" style="background:#34C759"></button>
+        <button class="cdot" data-color="#AF52DE" style="background:#AF52DE"></button>
+        <button class="cdot" data-color="#5AC8FA" style="background:#5AC8FA"></button>
       </div>
-      <div class="sheet-actions">
-        <button id="pes-delete" class="btn btn-danger">Delete Pin</button>
-        <button id="pes-save"   class="btn btn-accent">Save</button>
+      <div class="sheet-row">
+        <button id="pes-delete" class="sheet-btn danger">Delete Pin</button>
+        <button id="pes-save"   class="sheet-btn primary">Save</button>
       </div>
     </div>
   </div>
 
-  <!-- ═══ Photo viewer ═══════════════════════════════════════════════════════ -->
-  <div id="photo-viewer" class="modal" style="display:none">
-    <div class="modal-header">
-      <button id="pv-close" class="icon-btn" aria-label="Close">✕</button>
-      <div class="pv-meta">
-        <div id="pv-pin-name" class="pv-pin-name"></div>
-        <div id="pv-position" class="pv-position"></div>
+  <!-- Photo viewer ───────────────────────────────────────────────────────── -->
+  <div id="photo-viewer" class="viewer" style="display:none">
+    <header class="viewer-header">
+      <button id="pv-close" class="pv-close">Done</button>
+      <div class="viewer-meta">
+        <p id="pv-pin-name" class="pv-pin-name"></p>
+        <p id="pv-position" class="pv-pos"></p>
       </div>
-      <button id="pv-add-photo" class="btn btn-ghost">+ Revisit</button>
-    </div>
-    <div class="modal-body">
+      <button id="pv-add-photo" class="pv-add">+ Revisit</button>
+    </header>
+    <div class="viewer-body">
       <button id="pv-prev" class="pv-nav">‹</button>
-      <div class="pv-photo-area">
-        <img id="pv-image" alt="Site photo" />
+      <div class="pv-area">
+        <img id="pv-image" alt="" />
         <p id="pv-caption" class="pv-date"></p>
-        <input id="pv-photo-caption" class="pv-caption-input" type="text" placeholder="Add a caption…" maxlength="120" />
+        <input id="pv-photo-caption" class="pv-caption-field" type="text" placeholder="Add a caption…" maxlength="120" />
       </div>
       <button id="pv-next" class="pv-nav">›</button>
     </div>
-    <div class="modal-footer">
-      <input id="pv-note" class="pv-note-input" placeholder="Pin note…" />
-      <button id="pv-delete" class="btn btn-danger-sm">Delete</button>
+    <div class="viewer-footer">
+      <input id="pv-note" class="pv-note" placeholder="Pin note…" />
+      <button id="pv-delete" class="pv-delete">Delete</button>
     </div>
   </div>
 
-  <!-- ═══ Loading overlay ════════════════════════════════════════════════════ -->
-  <div id="loading-overlay" class="loading-overlay" style="display:none">
+  <!-- Loading ────────────────────────────────────────────────────────────── -->
+  <div id="loading-overlay" class="loading" style="display:none">
     <div class="spinner"></div>
     <p id="loading-text">Working…</p>
   </div>

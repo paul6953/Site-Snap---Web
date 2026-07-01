@@ -90,27 +90,25 @@ async function renderHome() {
         <div class="fp-card-name"></div>
         <div class="fp-card-meta"></div>
       </div>
-      <div class="fp-card-actions">
-        <button class="card-action-btn rename-btn" title="Rename">✏️</button>
-        <button class="card-action-btn danger delete-btn" title="Delete">🗑️</button>
-      </div>
+      <button class="fp-card-more" aria-label="More options">···</button>
     `;
     card.querySelector('.fp-card-name').textContent = fp.name;
     card.querySelector('.fp-card-meta').textContent = new Date(fp.createdAt).toLocaleDateString();
 
-    card.querySelector('.rename-btn').addEventListener('click', async (e) => {
+    card.querySelector('.fp-card-more').addEventListener('click', async (e) => {
       e.stopPropagation();
-      const newName = prompt('Rename floor plan:', fp.name);
-      if (newName && newName.trim() && newName.trim() !== fp.name) {
-        await DB.renameFloorPlan(fp.id, newName.trim());
-        renderHome();
-      }
-    });
-    card.querySelector('.delete-btn').addEventListener('click', async (e) => {
-      e.stopPropagation();
-      if (!confirm(`Delete "${fp.name}"? This cannot be undone.`)) return;
-      await DB.deleteFloorPlan(fp.id);
-      renderHome();
+      showActionSheet([
+        { label: 'Rename', action: async () => {
+          const n = prompt('Rename floor plan:', fp.name);
+          if (n && n.trim() && n.trim() !== fp.name) {
+            await DB.renameFloorPlan(fp.id, n.trim()); renderHome();
+          }
+        }},
+        { label: 'Delete', destructive: true, action: async () => {
+          if (!confirm(`Delete "${fp.name}"? This cannot be undone.`)) return;
+          await DB.deleteFloorPlan(fp.id); renderHome();
+        }},
+      ]);
     });
     card.addEventListener('click', () => openFloorPlan(fp.id));
     floorPlanList.appendChild(card);
@@ -194,6 +192,7 @@ addPinBtn.addEventListener('click', () => {
 
 // ─── Tap empty area ───────────────────────────────────────────────────────────
 async function handleTapEmpty(xNorm, yNorm) {
+  // In edit mode only allow taps when the user explicitly pressed + Add Pin
   if (editMode && !addingPin) return;
   const blob = await Camera.capture();
   if (!blob) return;
@@ -394,6 +393,30 @@ pvClose.addEventListener('click', async () => {
   currentPins = await DB.getPinsForFloorPlan(currentFP.id);
   if (currentFpView) { currentFpView.setPins(currentPins); currentFpView.setEditMode(editMode); }
 });
+
+// ─── Action sheet ─────────────────────────────────────────────────────────────
+function showActionSheet(options) {
+  const overlay = document.createElement('div');
+  overlay.className = 'sheet-overlay';
+  const sheet = document.createElement('div');
+  sheet.className = 'sheet';
+  sheet.innerHTML = '<div class="sheet-handle"></div>';
+  options.forEach(({ label, destructive, action }) => {
+    const btn = document.createElement('button');
+    btn.className = 'action-sheet-btn' + (destructive ? ' destructive' : '');
+    btn.textContent = label;
+    btn.addEventListener('click', () => { overlay.remove(); action(); });
+    sheet.appendChild(btn);
+  });
+  const cancel = document.createElement('button');
+  cancel.className = 'action-sheet-btn action-sheet-cancel';
+  cancel.textContent = 'Cancel';
+  cancel.addEventListener('click', () => overlay.remove());
+  sheet.appendChild(cancel);
+  overlay.appendChild(sheet);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 renderHome();
