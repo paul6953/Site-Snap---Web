@@ -125,17 +125,8 @@ async function exportFloorPlanPdf(floorPlan, pins, photosByPin) {
 
   const doc = new jsPDF({ unit: 'pt', format: [fpPageW, fpPageH] });
 
-  // Floor plan fills the entire page edge-to-edge.
+  // Floor plan fills the entire page edge-to-edge — no margins, no title bar.
   doc.addImage(fpData, imgFmt(fpData), 0, 0, fpPageW, fpPageH);
-
-  // Thin white title bar at top so the floor plan name is always readable.
-  const titleH = 18;
-  doc.setFillColor(255, 255, 255);
-  doc.rect(0, 0, fpPageW, titleH, 'F');
-  doc.setFont(undefined, 'bold');
-  doc.setFontSize(11);
-  doc.setTextColor(0, 0, 0);
-  doc.text(floorPlan.name, 6, 13);
 
   // Pins sit directly on the full-page image — no margin offset needed.
   const markerR = 1;
