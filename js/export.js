@@ -130,7 +130,14 @@ async function exportFloorPlanPdf(floorPlan, pins, photosByPin) {
     fpPageH = fpMeta.h * fpScale;
   }
 
-  const doc = new jsPDF({ unit: 'pt', format: [fpPageW, fpPageH] });
+  // jsPDF swaps [w,h] to portrait when w>h unless orientation:'landscape' is set.
+  // Always pass [shorter, longer] and let orientation control which axis is which.
+  const isLandscape = fpPageW > fpPageH;
+  const doc = new jsPDF({
+    unit: 'pt',
+    format: isLandscape ? [fpPageH, fpPageW] : [fpPageW, fpPageH],
+    orientation: isLandscape ? 'landscape' : 'portrait',
+  });
 
   // Floor plan fills the entire page edge-to-edge — no margins, no title bar.
   doc.addImage(fpData, imgFmt(fpData), 0, 0, fpPageW, fpPageH);
