@@ -123,13 +123,19 @@ importInput.addEventListener('change', async () => {
   if (!file) return;
   const name = file.name.replace(/\.[^/.]+$/, '') || 'Floor Plan';
   let imageBlob = file;
+  let pageWidthPt, pageHeightPt;
   if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
     showLoading('Converting PDF…');
-    try { imageBlob = await renderPdfFirstPageToBlob(file); }
+    try {
+      const result = await renderPdfFirstPageToBlob(file);
+      imageBlob    = result.blob;
+      pageWidthPt  = result.pageWidthPt;
+      pageHeightPt = result.pageHeightPt;
+    }
     catch (err) { hideLoading(); alert('Could not read PDF: ' + err.message); return; }
     hideLoading();
   }
-  const fp = await DB.addFloorPlan({ name, imageBlob });
+  const fp = await DB.addFloorPlan({ name, imageBlob, pageWidthPt, pageHeightPt });
   await openFloorPlan(fp.id);
 });
 

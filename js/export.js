@@ -111,17 +111,24 @@ async function exportFloorPlanPdf(floorPlan, pins, photosByPin) {
     }
   });
 
-  // ── Page 1: floor plan fills a page sized to its own aspect ratio ────────
-  // Load image first so we can size the page before creating the doc.
+  // ── Page 1: floor plan fills a page that exactly matches the source file ──
   const fpMeta = await loadMeta(floorPlan.imageBlob);
   const fpData = await toDataUrl(floorPlan.imageBlob);
   URL.revokeObjectURL(fpMeta.url);
 
-  // Scale so the longer edge = 792 pt, preserving aspect ratio.
-  const FP_MAX  = 792;
-  const fpScale = FP_MAX / Math.max(fpMeta.w, fpMeta.h);
-  const fpPageW = Math.round(fpMeta.w * fpScale);
-  const fpPageH = Math.round(fpMeta.h * fpScale);
+  // PDF imports store the original page dimensions in points (saved at import time).
+  // Use those exactly so the exported page is identical to the imported PDF page.
+  // PNG/JPEG imports have no stored dimensions — fall back to aspect-fit at 792pt.
+  let fpPageW, fpPageH;
+  if (floorPlan.pageWidthPt && floorPlan.pageHeightPt) {
+    fpPageW = floorPlan.pageWidthPt;
+    fpPageH = floorPlan.pageHeightPt;
+  } else {
+    const FP_MAX  = 792;
+    const fpScale = FP_MAX / Math.max(fpMeta.w, fpMeta.h);
+    fpPageW = fpMeta.w * fpScale;
+    fpPageH = fpMeta.h * fpScale;
+  }
 
   const doc = new jsPDF({ unit: 'pt', format: [fpPageW, fpPageH] });
 

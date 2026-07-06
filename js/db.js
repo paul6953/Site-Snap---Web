@@ -46,8 +46,8 @@ function uid() {
 
 const DB = {
   // --- Floor plans ---
-  async addFloorPlan({ name, imageBlob }) {
-    const record = { id: uid(), name, imageBlob, createdAt: Date.now() };
+  async addFloorPlan({ name, imageBlob, pageWidthPt, pageHeightPt }) {
+    const record = { id: uid(), name, imageBlob, pageWidthPt: pageWidthPt || null, pageHeightPt: pageHeightPt || null, createdAt: Date.now() };
     const t = await tx('floorPlans', 'readwrite');
     await promisifyRequest(t.objectStore('floorPlans').add(record));
     return record;

@@ -22,10 +22,14 @@ async function renderPdfFirstPageToBlob(file) {
 
   await page.render({ canvasContext: ctx, viewport }).promise;
 
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (blob) resolve(blob);
+  const blob = await new Promise((resolve, reject) => {
+    canvas.toBlob((b) => {
+      if (b) resolve(b);
       else reject(new Error('Could not rasterize PDF page.'));
     }, 'image/png');
   });
+
+  // Return the blob plus the native PDF page dimensions in points so the
+  // exporter can recreate a page that exactly matches the original PDF.
+  return { blob, pageWidthPt: baseViewport.width, pageHeightPt: baseViewport.height };
 }
