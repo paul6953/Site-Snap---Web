@@ -45,17 +45,20 @@ function aspectFit(iw, ih, bw, bh) {
   return { w: iw * s, h: ih * s };
 }
 
-function drawMarker(doc, num, cx, cy, colorHex, r = 5) {
+function drawMarker(doc, num, cx, cy, colorHex, r = 1) {
   const { r: cr, g: cg, b: cb } = hexToRgb(colorHex);
   doc.setFillColor(cr, cg, cb);
   doc.circle(cx, cy, r, 'F');
-  doc.setDrawColor(255, 255, 255);
-  doc.setLineWidth(Math.max(0.5, r * 0.12));
-  doc.circle(cx, cy, r - 0.4, 'S');
-  doc.setTextColor(255, 255, 255);
-  doc.setFont(undefined, 'bold');
-  doc.setFontSize(Math.max(4, Math.round(r * 1.0)));
-  doc.text(String(num), cx, cy, { align: 'center', baseline: 'middle' });
+  // Ring and number only render at larger sizes — too small to fit at r=1
+  if (r >= 4) {
+    doc.setDrawColor(255, 255, 255);
+    doc.setLineWidth(Math.max(0.5, r * 0.12));
+    doc.circle(cx, cy, r - 0.4, 'S');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont(undefined, 'bold');
+    doc.setFontSize(Math.max(4, Math.round(r)));
+    doc.text(String(num), cx, cy, { align: 'center', baseline: 'middle' });
+  }
 }
 
 // ─── Layout engine ────────────────────────────────────────────────────────────
@@ -129,8 +132,8 @@ async function exportFloorPlanPdf(floorPlan, pins, photosByPin) {
 
   doc.addImage(fpData, imgFmt(fpData), fpX, fpY, fpFit.w, fpFit.h);
 
-  // At 1:750 architectural scale, 1m real ≈ 5pt radius on a letter-size PDF.
-  const markerR = 5;
+  // 0.2 × previous 5pt = 1pt radius — subtle dot at 1:750 scale.
+  const markerR = 1;
 
   pins.forEach((pin, i) => {
     const cx = fpX + pin.xNorm * fpFit.w;
