@@ -70,37 +70,54 @@ function mpShow(id) {
 
 // ─── Entry point (called from app.js) ────────────────────────────────────────
 function openManpowerScreen() {
+  document.getElementById('screen-landing').style.display   = 'none';
   document.getElementById('screen-home').style.display      = 'none';
   document.getElementById('screen-floorplan').style.display = 'none';
   document.getElementById('screen-manpower').style.display  = 'flex';
+  mpEditDate = todayISO();
   mpOpenHome();
 }
 
 function closeManpowerScreen() {
-  document.getElementById('screen-manpower').style.display = 'none';
-  document.getElementById('screen-home').style.display     = 'flex';
+  document.getElementById('screen-manpower').style.display  = 'none';
+  document.getElementById('screen-landing').style.display   = 'flex';
 }
 
 // ─── Home sub-screen ─────────────────────────────────────────────────────────
 async function mpOpenHome() {
   mpShow('mp-sub-home');
-  const today = todayISO();
-  document.getElementById('mp-date-label').textContent =
-    new Date(today + 'T12:00:00').toLocaleDateString(undefined,
-      { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-  const existing = await DB.getManpowerDay(today);
+  if (!mpEditDate) mpEditDate = todayISO();
+
+  const picker = document.getElementById('mp-date-picker');
+  picker.value = mpEditDate;
+  picker.max   = todayISO();
+
+  const isToday  = mpEditDate === todayISO();
+  document.getElementById('mp-date-label').textContent = fmtDate(mpEditDate);
+
+  const existing = await DB.getManpowerDay(mpEditDate);
   document.getElementById('mp-home-status').textContent =
-    existing ? 'Today\'s count is recorded. Tap to edit.' : 'Today\'s count has not been recorded.';
+    existing ? 'Count recorded. Tap below to edit.' : 'No count recorded for this date.';
   document.getElementById('mp-start-btn').textContent =
-    existing ? 'Edit Today\'s Count' : 'Record Today\'s Count';
+    existing ? 'Edit Count' : (isToday ? 'Record Today\'s Count' : 'Record Count');
 }
 
 document.getElementById('mp-back-home').addEventListener('click', closeManpowerScreen);
 
+document.getElementById('mp-date-picker').addEventListener('change', async (e) => {
+  if (!e.target.value) return;
+  mpEditDate = e.target.value;
+  const isToday  = mpEditDate === todayISO();
+  document.getElementById('mp-date-label').textContent = fmtDate(mpEditDate);
+  const existing = await DB.getManpowerDay(mpEditDate);
+  document.getElementById('mp-home-status').textContent =
+    existing ? 'Count recorded. Tap below to edit.' : 'No count recorded for this date.';
+  document.getElementById('mp-start-btn').textContent =
+    existing ? 'Edit Count' : (isToday ? 'Record Today\'s Count' : 'Record Count');
+});
+
 document.getElementById('mp-start-btn').addEventListener('click', async () => {
-  const today = todayISO();
-  mpEditDate = today;
-  const existing = await DB.getManpowerDay(today);
+  const existing = await DB.getManpowerDay(mpEditDate);
   mpDraft = existing ? JSON.parse(JSON.stringify(existing.entries)) : {};
   mpShowTrades();
 });
@@ -218,6 +235,77 @@ async function mpShowReports() {
 }
 
 document.getElementById('mp-reports-back').addEventListener('click', mpOpenHome);
+
+document.getElementById('mp-export-btn').addEventListener('click', async () => {
+  const allDays = await DB.getAllManpowerDays();
+  exportManpowerExcel(allDays);
+});
+
+// ─── Excel export ─────────────────────────────────────────────────────────────
+function exportManpowerExcel(allDays) {
+  if (typeof XLSX === 'undefined') {
+    alert('Excel library not loaded. Try refreshing the app.');
+    return;
+  }
+  if (!allDays.length) {
+    alert('No manpower data recorded yet.');
+    return;
+  }
+
+  const wb = XLSX.utils.book_new();
+
+  // --- Summary: one row per day, one column per trade ---
+  const summaryHeader = ['Date', ...MP_TRADES.map(t => t.name), 'Grand Total'];
+  const summaryRows   = [summaryHeader];
+  for (const day of allDays) {
+    const row = [day.date];
+    let total = 0;
+    for (const t of MP_TRADES) { const v = tradeSum(t.id, day.entries); row.push(v); total += v; }
+    row.push(total);
+    summaryRows.push(row);
+  }
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryRows), 'Summary');
+
+  // --- All Zones: total workers per zone per day ---
+  const zoneHeader = ['Date', ...MP_ZONES.map(z => z === 'P1' ? 'P1' : 'Zone ' + z)];
+  const zoneRows   = [zoneHeader];
+  for (const day of allDays) {
+    zoneRows.push([day.date, ...MP_ZONES.map(z => zoneAllTradesSum(z, day.entries))]);
+  }
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(zoneRows), 'All Zones');
+
+  // --- Per-trade sheets ---
+  for (const trade of MP_TRADES) {
+    if (trade.noZone) {
+      const rows = [['Date', trade.name]];
+      for (const day of allDays) rows.push([day.date, day.entries?.[trade.id] || 0]);
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), trade.name.slice(0, 31));
+    } else {
+      const headers = ['Date', 'P1', ...L2_ZONES.map(z => 'Zone ' + z), 'P1 Total', 'L2 Total', 'Grand Total'];
+      const rows = [headers];
+      for (const day of allDays) {
+        const p1v    = day.entries?.[trade.id]?.P1 || 0;
+        const l2vals = L2_ZONES.map(z => day.entries?.[trade.id]?.[z] || 0);
+        const l2tot  = l2vals.reduce((s, v) => s + v, 0);
+        rows.push([day.date, p1v, ...l2vals, p1v, l2tot, p1v + l2tot]);
+      }
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), trade.name.slice(0, 31));
+    }
+  }
+
+  // --- M&E Total ---
+  const meRows = [['Date', 'MNTI P1', 'MNTI L2', 'Trident P1', 'Trident L2', 'M&E Total']];
+  for (const day of allDays) {
+    const mP1 = MNTI_IDS.reduce((s, id) => s + (day.entries?.[id]?.P1 || 0), 0);
+    const mL2 = MNTI_IDS.reduce((s, id) => s + l2Sum(id, day.entries), 0);
+    const tP1 = day.entries?.Trident?.P1 || 0;
+    const tL2 = l2Sum('Trident', day.entries);
+    meRows.push([day.date, mP1, mL2, tP1, tL2, mP1 + mL2 + tP1 + tL2]);
+  }
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(meRows), 'M&E Total');
+
+  XLSX.writeFile(wb, `Manpower_${todayISO()}.xlsx`);
+}
 
 // ─── Chart rendering ─────────────────────────────────────────────────────────
 function renderAllCharts(container, allDays) {

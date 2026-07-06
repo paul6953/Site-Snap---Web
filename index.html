@@ -11,14 +11,39 @@
 </head>
 <body>
 
+  <!-- Landing ────────────────────────────────────────────────────────────── -->
+  <div id="screen-landing" class="screen screen-landing">
+    <div class="landing-header">
+      <p class="landing-logo">📐</p>
+      <h1 class="landing-title">SiteSnap</h1>
+      <p class="landing-subtitle">Construction Documentation</p>
+    </div>
+    <div class="landing-options">
+      <button id="land-sitesnap-btn" class="landing-option-card">
+        <div class="landing-option-icon">🗂</div>
+        <div class="landing-option-text">
+          <p class="landing-option-name">Site Snap</p>
+          <p class="landing-option-desc">Floor plan &amp; photo documentation</p>
+        </div>
+        <span class="landing-option-chevron">›</span>
+      </button>
+      <button id="land-manpower-btn" class="landing-option-card">
+        <div class="landing-option-icon">👷</div>
+        <div class="landing-option-text">
+          <p class="landing-option-name">Manpower Tracker</p>
+          <p class="landing-option-desc">Daily worker count &amp; reports</p>
+        </div>
+        <span class="landing-option-chevron">›</span>
+      </button>
+    </div>
+  </div>
+
   <!-- Home ──────────────────────────────────────────────────────────────── -->
-  <div id="screen-home" class="screen">
+  <div id="screen-home" class="screen" style="display:none">
     <header class="nav">
-      <h1 class="nav-title">SiteSnap</h1>
-      <div class="nav-right-group">
-        <button id="mp-open-btn" class="nav-action-ghost">Manpower</button>
-        <button id="import-btn" class="nav-action">Upload</button>
-      </div>
+      <button id="home-back-btn" class="nav-back">‹ Home</button>
+      <h1 class="nav-title-center">Site Snap</h1>
+      <button id="import-btn" class="nav-action">Upload</button>
     </header>
     <input type="file" id="import-input" accept="image/*,application/pdf" hidden />
     <div id="floorplan-list" class="list"></div>
@@ -138,6 +163,7 @@
       </header>
       <div class="mp-home-body">
         <p class="mp-date-label" id="mp-date-label"></p>
+        <input type="date" id="mp-date-picker" class="mp-date-picker-input" />
         <p class="mp-status-label" id="mp-home-status"></p>
         <button class="mp-btn-primary" id="mp-start-btn">Record Today's Count</button>
         <button class="mp-btn-secondary" id="mp-view-reports-btn">View Reports</button>
@@ -195,7 +221,7 @@
       <header class="nav">
         <button id="mp-reports-back" class="nav-back">‹ Back</button>
         <h1 class="nav-title-center">Reports</h1>
-        <div style="width:60px"></div>
+        <button id="mp-export-btn" class="nav-action">Export</button>
       </header>
       <div class="mp-reports-scroll" id="mp-reports-body"></div>
     </div>
@@ -208,6 +234,8 @@
     <p id="loading-text">Working…</p>
   </div>
 
+  <script src="js/seed-data.js"></script>
+  <script src="js/vendor/xlsx.mini.min.js"></script>
   <script src="js/vendor/jspdf.umd.min.js"></script>
   <script src="js/vendor/pdf.min.js"></script>
   <script src="js/pdfimport.js"></script>

@@ -1,4 +1,5 @@
 // ─── DOM ─────────────────────────────────────────────────────────────────────
+const screenLanding   = document.getElementById('screen-landing');
 const screenHome      = document.getElementById('screen-home');
 const screenFP        = document.getElementById('screen-floorplan');
 const floorPlanList   = document.getElementById('floorplan-list');
@@ -67,8 +68,9 @@ let viewerCurrentPhoto   = null;
 function showLoading(t) { loadingText.textContent = t; loadingOverlay.style.display = 'flex'; }
 function hideLoading()   { loadingOverlay.style.display = 'none'; }
 function showScreen(n) {
-  screenHome.style.display = n === 'home'      ? 'flex' : 'none';
-  screenFP.style.display   = n === 'floorplan' ? 'flex' : 'none';
+  screenLanding.style.display = n === 'landing'   ? 'flex' : 'none';
+  screenHome.style.display    = n === 'home'       ? 'flex' : 'none';
+  screenFP.style.display      = n === 'floorplan'  ? 'flex' : 'none';
 }
 
 // ─── Home screen ──────────────────────────────────────────────────────────────
@@ -320,6 +322,10 @@ backBtn.addEventListener('click', () => {
   renderHome();
 });
 
+document.getElementById('home-back-btn').addEventListener('click', () => {
+  showScreen('landing');
+});
+
 // ─── Export ───────────────────────────────────────────────────────────────────
 exportBtn.addEventListener('click', async () => {
   if (!currentFP) return;
@@ -438,9 +444,30 @@ function showActionSheet(options) {
   document.body.appendChild(overlay);
 }
 
-// ─── Manpower ─────────────────────────────────────────────────────────────────
-document.getElementById('mp-open-btn').addEventListener('click', openManpowerScreen);
+// ─── Landing navigation ───────────────────────────────────────────────────────
+document.getElementById('land-sitesnap-btn').addEventListener('click', () => {
+  showScreen('home');
+  renderHome();
+});
+document.getElementById('land-manpower-btn').addEventListener('click', openManpowerScreen);
+
+// ─── Historical data seeding ──────────────────────────────────────────────────
+async function seedManpowerData() {
+  if (typeof MANPOWER_SEED_DATA === 'undefined' || !MANPOWER_SEED_DATA.length) return;
+  const existing    = await DB.getAllManpowerDays();
+  const existingSet = new Set(existing.map((d) => d.date));
+  let count = 0;
+  for (const day of MANPOWER_SEED_DATA) {
+    if (!existingSet.has(day.date)) {
+      await DB.saveManpowerDay(day.date, day.entries);
+      count++;
+    }
+  }
+  if (count) console.log(`[SiteSnap] Imported ${count} historical manpower records`);
+}
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
+showScreen('landing');
 renderHome();
+seedManpowerData();
 if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
