@@ -487,10 +487,10 @@ html, body {
   background: #fff; border-radius: 13px;
   padding: 14px; margin-bottom: 12px;
 }
-.mp-chart-title { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+.mp-chart-title { font-size: 13px; font-weight: 600; margin-bottom: 10px; text-align: center; }
 
 .mp-legend {
-  display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px;
+  display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; justify-content: center; margin-bottom: 8px;
 }
 .mp-legend-item {
   display: flex; align-items: center; gap: 5px;

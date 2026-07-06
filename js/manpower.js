@@ -375,6 +375,12 @@ function section(container, title) {
 }
 
 function chart(container, title, labels, datasets) {
+  // Trim leading all-zero entries (e.g. trades that started after June 2)
+  let start = 0;
+  while (start < labels.length - 1 && datasets.every(ds => !(ds.data[start] || 0))) start++;
+  const tLabels   = start > 0 ? labels.slice(start)                              : labels;
+  const tDatasets = start > 0 ? datasets.map(ds => ({ ...ds, data: ds.data.slice(start) })) : datasets;
+
   const card = document.createElement('div');
   card.className = 'mp-chart-card';
 
@@ -383,9 +389,19 @@ function chart(container, title, labels, datasets) {
   h.textContent = title;
   card.appendChild(h);
 
-  const hasData = datasets.some(ds => ds.data.some(v => v > 0));
+  const hasData = tDatasets.some(ds => ds.data.some(v => v > 0));
+  const canvas  = document.createElement('canvas');
 
-  const canvas = document.createElement('canvas');
+  // Legend always rendered (above chart so it's visible before scrolling)
+  const leg = document.createElement('div');
+  leg.className = 'mp-legend';
+  tDatasets.forEach(ds => {
+    const item = document.createElement('span');
+    item.className = 'mp-legend-item';
+    item.innerHTML = `<span class="mp-legend-dot" style="background:${ds.color}"></span>${ds.label}`;
+    leg.appendChild(item);
+  });
+  card.appendChild(leg);
 
   if (!hasData) {
     const e = document.createElement('p');
@@ -398,16 +414,6 @@ function chart(container, title, labels, datasets) {
   }
 
   card.appendChild(canvas);
-
-  const leg = document.createElement('div');
-  leg.className = 'mp-legend';
-  datasets.forEach(ds => {
-    const item = document.createElement('span');
-    item.className = 'mp-legend-item';
-    item.innerHTML = `<span class="mp-legend-dot" style="background:${ds.color}"></span>${ds.label}`;
-    leg.appendChild(item);
-  });
-  card.appendChild(leg);
   container.appendChild(card);
 
   mpChartItems.push({ type: 'chart', title, canvas });
@@ -415,50 +421,62 @@ function chart(container, title, labels, datasets) {
   requestAnimationFrame(() => {
     const dpr = window.devicePixelRatio || 1;
     const W   = canvas.parentElement.clientWidth - 28;
-    const H   = 240;
+    const H   = 280;
     canvas.width  = W * dpr;
     canvas.height = H * dpr;
     canvas.style.width  = W + 'px';
     canvas.style.height = H + 'px';
     const ctx = canvas.getContext('2d');
     ctx.scale(dpr, dpr);
-    drawLineChart(ctx, W, H, labels, datasets);
+    drawLineChart(ctx, W, H, tLabels, tDatasets);
   });
 }
 
+// Pick a round interval so Y-axis shows only whole numbers at sensible steps
+function niceInterval(maxVal) {
+  if (maxVal <= 5)   return 1;
+  if (maxVal <= 12)  return 2;
+  if (maxVal <= 30)  return 5;
+  if (maxVal <= 60)  return 10;
+  if (maxVal <= 120) return 20;
+  return 25;
+}
+
 function drawLineChart(ctx, W, H, labels, datasets) {
-  const P  = { t: 12, r: 12, b: 52, l: 38 };
+  const P  = { t: 16, r: 16, b: 64, l: 44 };
   const cW = W - P.l - P.r;
   const cH = H - P.t - P.b;
   const n  = labels.length;
 
-  const maxVal = Math.max(...datasets.flatMap(d => d.data), 1);
+  const rawMax   = Math.max(...datasets.flatMap(d => d.data), 1);
+  const interval = niceInterval(rawMax);
+  const niceMax  = Math.ceil(rawMax / interval) * interval;
+  const ticks    = niceMax / interval;
 
   ctx.clearRect(0, 0, W, H);
 
-  // Grid + Y labels
-  for (let i = 0; i <= 4; i++) {
-    const y = P.t + cH - (i / 4) * cH;
-    ctx.strokeStyle = '#e5e5ea'; ctx.lineWidth = 0.5;
+  // Y grid + labels — one tick per interval, all whole numbers
+  ctx.font = '9px -apple-system,sans-serif';
+  for (let i = 0; i <= ticks; i++) {
+    const val = i * interval;
+    const y   = P.t + cH - (val / niceMax) * cH;
+    ctx.strokeStyle = i === 0 ? '#c7c7cc' : '#e5e5ea';
+    ctx.lineWidth   = 0.5;
     ctx.beginPath(); ctx.moveTo(P.l, y); ctx.lineTo(P.l + cW, y); ctx.stroke();
-    ctx.fillStyle = '#8e8e93'; ctx.font = '9px -apple-system,sans-serif';
-    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-    ctx.fillText(Math.round(maxVal * i / 4), P.l - 5, y);
+    ctx.fillStyle = '#8e8e93'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    ctx.fillText(val, P.l - 6, y);
   }
 
-  // X axis
-  ctx.strokeStyle = '#c7c7cc'; ctx.lineWidth = 0.5;
-  ctx.beginPath(); ctx.moveTo(P.l, P.t + cH); ctx.lineTo(P.l + cW, P.t + cH); ctx.stroke();
-
-  // X labels — all points, rotated -45°
+  // X labels — every other point when dense (keeps spacing comfortable), rotated -45°
+  const labelStep = n > 14 ? 2 : 1;
   ctx.fillStyle = '#8e8e93'; ctx.font = '9px -apple-system,sans-serif';
   for (let i = 0; i < n; i++) {
+    if (i % labelStep !== 0 && i !== n - 1) continue;
     const x = P.l + (n < 2 ? cW / 2 : (i / (n - 1)) * cW);
     ctx.save();
-    ctx.translate(x, H - P.b + 6);
+    ctx.translate(x, P.t + cH + 8);
     ctx.rotate(-Math.PI / 4);
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'top';
+    ctx.textAlign = 'right'; ctx.textBaseline = 'top';
     ctx.fillText(labels[i], 0, 0);
     ctx.restore();
   }
@@ -467,7 +485,7 @@ function drawLineChart(ctx, W, H, labels, datasets) {
   for (const ds of datasets) {
     const pts = ds.data.map((v, i) => ({
       x: P.l + (n < 2 ? cW / 2 : (i / (n - 1)) * cW),
-      y: P.t + cH - (v / maxVal) * cH,
+      y: P.t + cH - (v / niceMax) * cH,
     }));
 
     ctx.strokeStyle = ds.color; ctx.lineWidth = 1.5; ctx.lineJoin = 'round';
