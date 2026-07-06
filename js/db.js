@@ -158,6 +158,11 @@ const DB = {
     return all.sort((a, b) => a.date.localeCompare(b.date));
   },
 
+  async deleteManpowerDay(date) {
+    const t = await tx('manpowerDays', 'readwrite');
+    await promisifyRequest(t.objectStore('manpowerDays').delete(date));
+  },
+
   // --- Photos ---
   async addPhoto({ pinId, blob, caption, note }) {
     const record = { id: uid(), pinId, blob, caption: caption || null, note: note || null, capturedAt: Date.now() };

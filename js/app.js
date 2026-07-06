@@ -454,6 +454,16 @@ document.getElementById('land-manpower-btn').addEventListener('click', openManpo
 // ─── Historical data seeding ──────────────────────────────────────────────────
 async function seedManpowerData() {
   if (typeof MANPOWER_SEED_DATA === 'undefined' || !MANPOWER_SEED_DATA.length) return;
+
+  // One-time migration: July 4 data was recorded in error — correct date is July 6
+  const jul4 = await DB.getManpowerDay('2026-07-04');
+  const jul6 = await DB.getManpowerDay('2026-07-06');
+  if (jul4 && !jul6) {
+    await DB.saveManpowerDay('2026-07-06', jul4.entries);
+    await DB.deleteManpowerDay('2026-07-04');
+    console.log('[SiteSnap] Migrated 2026-07-04 → 2026-07-06');
+  }
+
   const existing    = await DB.getAllManpowerDays();
   const existingSet = new Set(existing.map((d) => d.date));
   let count = 0;

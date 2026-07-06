@@ -23,6 +23,7 @@ let mpEditDate    = null;
 let mpActiveTrade = null;
 let mpActiveZone  = null;
 let mpKeypadVal   = '';
+let mpChartItems  = []; // { type:'section'|'chart', title, canvas? }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function todayISO() {
@@ -236,9 +237,14 @@ async function mpShowReports() {
 
 document.getElementById('mp-reports-back').addEventListener('click', mpOpenHome);
 
-document.getElementById('mp-export-btn').addEventListener('click', async () => {
-  const allDays = await DB.getAllManpowerDays();
-  exportManpowerExcel(allDays);
+document.getElementById('mp-export-btn').addEventListener('click', () => {
+  showActionSheet([
+    { label: 'Export Charts (PDF)', action: exportChartsPDF },
+    { label: 'Export Data (Excel)', action: async () => {
+      const allDays = await DB.getAllManpowerDays();
+      exportManpowerExcel(allDays);
+    }},
+  ]);
 });
 
 // ─── Excel export ─────────────────────────────────────────────────────────────
@@ -309,44 +315,55 @@ function exportManpowerExcel(allDays) {
 
 // ─── Chart rendering ─────────────────────────────────────────────────────────
 function renderAllCharts(container, allDays) {
-  const shortLabels = allDays.map(d => {
+  mpChartItems = [];
+  const labels = allDays.map(d => {
     const [, m, day] = d.date.split('-');
     return `${parseInt(m)}/${parseInt(day)}`;
   });
 
-  const p1 = (tid) => allDays.map(d => d.entries?.[tid]?.P1 || 0);
-  const l2 = (tid) => allDays.map(d => l2Sum(tid, d.entries));
-  const zoneAll = (z) => allDays.map(d => zoneAllTradesSum(z, d.entries));
-  const mntiP1  = () => allDays.map(d => MNTI_IDS.reduce((s,id) => s + (d.entries?.[id]?.P1 || 0), 0));
-  const mntiL2  = () => allDays.map(d => MNTI_IDS.reduce((s,id) => s + l2Sum(id, d.entries), 0));
+  const p1       = (tid) => allDays.map(d => d.entries?.[tid]?.P1 || 0);
+  const zd       = (tid, z) => allDays.map(d => d.entries?.[tid]?.[z] || 0);
+  const l2t      = (tid) => allDays.map(d => l2Sum(tid, d.entries));
+  const mntiZone = (z)  => allDays.map(d => MNTI_IDS.reduce((s, id) => s + (d.entries?.[id]?.[z] || 0), 0));
+  const mntiP1   = ()   => allDays.map(d => MNTI_IDS.reduce((s, id) => s + (d.entries?.[id]?.P1 || 0), 0));
 
-  // Section 1 — All zones overview
-  section(container, 'Workers by Zone');
-  chart(container, 'All Zones — Daily Total', shortLabels,
-    MP_ZONES.map(z => ({ label: z === 'P1' ? 'P1' : 'Zone ' + z, color: ZONE_COLORS[z], data: zoneAll(z) })));
+  // ─── Category 1: Workers by Trade — By Zone ──────────────────────────────
+  section(container, 'Workers by Trade — By Zone');
 
-  // Section 2 — Per-trade P1 vs L2
-  section(container, 'Workers by Trade');
-  for (const t of MP_TRADES) {
-    if (t.noZone) {
-      chart(container, `${t.name} — Daily Count`, shortLabels,
-        [{ label: t.name, color: '#007AFF', data: allDays.map(d => d.entries?.[t.id] || 0) }]);
-    } else {
-      chart(container, `${t.name} — P1 vs L2`, shortLabels, [
-        { label: 'P1', color: '#007AFF', data: p1(t.id) },
-        { label: 'L2', color: '#34C759', data: l2(t.id) },
-      ]);
-    }
+  chart(container, 'ATWM — Daily Count', labels,
+    [{ label: 'ATWM', color: '#007AFF', data: allDays.map(d => d.entries?.ATWM || 0) }]);
+
+  for (const t of MP_TRADES.filter(t => !t.noZone)) {
+    chart(container, `${t.name} — By Zone`, labels, [
+      { label: 'P1', color: ZONE_COLORS['P1'], data: p1(t.id) },
+      ...L2_ZONES.map(z => ({ label: 'Zone ' + z, color: ZONE_COLORS[z], data: zd(t.id, z) })),
+    ]);
   }
 
-  // Section 3 — M&E Total
-  section(container, 'M&E Total');
-  chart(container, 'M&E & Trident Daily Count', shortLabels, [
-    { label: 'MNTI P1',    color: '#007AFF', data: mntiP1()   },
-    { label: 'MNTI L2',    color: '#34C759', data: mntiL2()   },
-    { label: 'Trident P1', color: '#FF9500', data: p1('Trident') },
-    { label: 'Trident L2', color: '#AF52DE', data: l2('Trident') },
-  ]);
+  // ─── Category 2: Workers by Trade — Total (P1 vs L2) ─────────────────────
+  section(container, 'Workers by Trade — Total');
+
+  for (const t of MP_TRADES.filter(t => !t.noZone)) {
+    chart(container, `${t.name} — P1 vs L2 Total`, labels, [
+      { label: 'P1',       color: '#007AFF', data: p1(t.id)  },
+      { label: 'L2 Total', color: '#34C759', data: l2t(t.id) },
+    ]);
+  }
+
+  // ─── Category 3: M&E Totals ───────────────────────────────────────────────
+  section(container, 'M&E Totals');
+
+  chart(container, 'MNTI — P1 Daily Total', labels,
+    [{ label: 'MNTI P1', color: '#007AFF', data: mntiP1() }]);
+
+  chart(container, 'MNTI — L2 by Zone', labels,
+    L2_ZONES.map(z => ({ label: 'Zone ' + z, color: ZONE_COLORS[z], data: mntiZone(z) })));
+
+  chart(container, 'Trident — P1 Daily Count', labels,
+    [{ label: 'Trident P1', color: '#FF9500', data: p1('Trident') }]);
+
+  chart(container, 'Trident — L2 by Zone', labels,
+    L2_ZONES.map(z => ({ label: 'Zone ' + z, color: ZONE_COLORS[z], data: zd('Trident', z) })));
 }
 
 function section(container, title) {
@@ -354,6 +371,7 @@ function section(container, title) {
   h.className = 'mp-section-header';
   h.textContent = title;
   container.appendChild(h);
+  mpChartItems.push({ type: 'section', title });
 }
 
 function chart(container, title, labels, datasets) {
@@ -366,19 +384,21 @@ function chart(container, title, labels, datasets) {
   card.appendChild(h);
 
   const hasData = datasets.some(ds => ds.data.some(v => v > 0));
+
+  const canvas = document.createElement('canvas');
+
   if (!hasData) {
     const e = document.createElement('p');
     e.className = 'mp-placeholder';
     e.textContent = 'No data yet';
     card.appendChild(e);
     container.appendChild(card);
+    mpChartItems.push({ type: 'chart', title, canvas: null });
     return;
   }
 
-  const canvas = document.createElement('canvas');
   card.appendChild(canvas);
 
-  // Legend
   const leg = document.createElement('div');
   leg.className = 'mp-legend';
   datasets.forEach(ds => {
@@ -390,11 +410,12 @@ function chart(container, title, labels, datasets) {
   card.appendChild(leg);
   container.appendChild(card);
 
-  // Draw after layout is settled
+  mpChartItems.push({ type: 'chart', title, canvas });
+
   requestAnimationFrame(() => {
     const dpr = window.devicePixelRatio || 1;
-    const W   = canvas.parentElement.clientWidth - 28; // card padding
-    const H   = 180;
+    const W   = canvas.parentElement.clientWidth - 28;
+    const H   = 240;
     canvas.width  = W * dpr;
     canvas.height = H * dpr;
     canvas.style.width  = W + 'px';
@@ -406,7 +427,7 @@ function chart(container, title, labels, datasets) {
 }
 
 function drawLineChart(ctx, W, H, labels, datasets) {
-  const P = { t: 12, r: 12, b: 38, l: 38 };
+  const P  = { t: 12, r: 12, b: 52, l: 38 };
   const cW = W - P.l - P.r;
   const cH = H - P.t - P.b;
   const n  = labels.length;
@@ -425,23 +446,24 @@ function drawLineChart(ctx, W, H, labels, datasets) {
     ctx.fillText(Math.round(maxVal * i / 4), P.l - 5, y);
   }
 
-  // X labels (up to 8, evenly spaced)
-  const xStep = Math.max(1, Math.ceil(n / 8));
-  ctx.fillStyle = '#8e8e93'; ctx.font = '9px -apple-system,sans-serif';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  for (let i = 0; i < n; i += xStep) {
-    const x = P.l + (n < 2 ? cW / 2 : (i / (n - 1)) * cW);
-    ctx.fillText(labels[i], x, H - P.b + 4);
-  }
-  if (n > 1 && (n - 1) % xStep !== 0) {
-    ctx.fillText(labels[n - 1], P.l + cW, H - P.b + 4);
-  }
-
   // X axis
   ctx.strokeStyle = '#c7c7cc'; ctx.lineWidth = 0.5;
   ctx.beginPath(); ctx.moveTo(P.l, P.t + cH); ctx.lineTo(P.l + cW, P.t + cH); ctx.stroke();
 
-  // Series
+  // X labels — all points, rotated -45°
+  ctx.fillStyle = '#8e8e93'; ctx.font = '9px -apple-system,sans-serif';
+  for (let i = 0; i < n; i++) {
+    const x = P.l + (n < 2 ? cW / 2 : (i / (n - 1)) * cW);
+    ctx.save();
+    ctx.translate(x, H - P.b + 6);
+    ctx.rotate(-Math.PI / 4);
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'top';
+    ctx.fillText(labels[i], 0, 0);
+    ctx.restore();
+  }
+
+  // Series lines + dots
   for (const ds of datasets) {
     const pts = ds.data.map((v, i) => ({
       x: P.l + (n < 2 ? cW / 2 : (i / (n - 1)) * cW),
@@ -450,7 +472,7 @@ function drawLineChart(ctx, W, H, labels, datasets) {
 
     ctx.strokeStyle = ds.color; ctx.lineWidth = 1.5; ctx.lineJoin = 'round';
     ctx.beginPath();
-    pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+    pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
     ctx.stroke();
 
     ctx.fillStyle = ds.color;
@@ -458,4 +480,55 @@ function drawLineChart(ctx, W, H, labels, datasets) {
       ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI * 2); ctx.fill();
     }
   }
+}
+
+// ─── PDF chart export ─────────────────────────────────────────────────────────
+function exportChartsPDF() {
+  if (!mpChartItems.length) {
+    alert('Open Reports first to load the charts.');
+    return;
+  }
+
+  const { jsPDF } = window.jspdf;
+  const PW = 612, PH = 792, M = 36;
+  const doc = new jsPDF({ unit: 'pt', format: [PW, PH], orientation: 'portrait' });
+
+  let y = M;
+
+  // Cover title
+  doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.setTextColor(0, 0, 0);
+  doc.text('Manpower Report', M, y + 4);
+  doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(142, 142, 147);
+  doc.text(new Date().toLocaleDateString(undefined, { weekday:'long', year:'numeric', month:'long', day:'numeric' }), M, y + 20);
+  y += 50;
+
+  for (const item of mpChartItems) {
+    if (item.type === 'section') {
+      if (y + 80 > PH - M) { doc.addPage([PW, PH]); y = M; }
+      else y += 10;
+      doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(142, 142, 147);
+      doc.text(item.title.toUpperCase(), M, y);
+      doc.setDrawColor(229, 229, 234); doc.setLineWidth(0.5);
+      doc.line(M, y + 5, PW - M, y + 5);
+      y += 18;
+    } else if (item.type === 'chart' && item.canvas && item.canvas.width) {
+      const cv      = item.canvas;
+      const logW    = parseFloat(cv.style.width)  || cv.width;
+      const logH    = parseFloat(cv.style.height) || cv.height;
+      const pdfImgW = PW - 2 * M;
+      const pdfImgH = logH * (pdfImgW / logW);
+      const blockH  = 16 + pdfImgH + 12;
+
+      if (y + blockH > PH - M) { doc.addPage([PW, PH]); y = M; }
+
+      doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(0, 0, 0);
+      doc.text(item.title, M, y);
+      y += 14;
+
+      doc.addImage(cv.toDataURL('image/png'), 'PNG', M, y, pdfImgW, pdfImgH);
+      y += pdfImgH + 12;
+    }
+  }
+
+  doc.save(`Manpower_Charts_${todayISO()}.pdf`);
 }
