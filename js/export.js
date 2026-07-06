@@ -89,9 +89,8 @@ async function exportFloorPlanPdf(floorPlan, pins, photosByPin) {
     throw new Error('PDF library failed to load. Close and reopen the app, then try again.');
   }
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
 
-  // Build flat item list and collect photos for loading
+  // Build flat item list
   const items = [];
   for (let i = 0; i < pins.length; i++) {
     const pin    = pins[i];
@@ -104,8 +103,6 @@ async function exportFloorPlanPdf(floorPlan, pins, photosByPin) {
 
   // Simulate layout to get page numbers per item (for GoTo links on floor plan)
   const { layout } = simulate(items);
-
-  // Map pinIndex → first page in the body (offset by 1 for the floor-plan page)
   const pinFirstPage = {};
   layout.forEach((pos, idx) => {
     if (items[idx].type === 'header') {
@@ -114,30 +111,37 @@ async function exportFloorPlanPdf(floorPlan, pins, photosByPin) {
     }
   });
 
-  // ── Page 1: floor plan ───────────────────────────────────────────────────
-  const fpMeta  = await loadMeta(floorPlan.imageBlob);
-  const fpData  = await toDataUrl(floorPlan.imageBlob);
+  // ── Page 1: floor plan fills a page sized to its own aspect ratio ────────
+  // Load image first so we can size the page before creating the doc.
+  const fpMeta = await loadMeta(floorPlan.imageBlob);
+  const fpData = await toDataUrl(floorPlan.imageBlob);
   URL.revokeObjectURL(fpMeta.url);
 
-  const titleH = 32;
-  const imgBox = { w: PW - M * 2, h: PH - M * 2 - titleH };
-  const fpFit  = aspectFit(fpMeta.w, fpMeta.h, imgBox.w, imgBox.h);
-  const fpX    = M + (imgBox.w - fpFit.w) / 2;
-  const fpY    = M + titleH;
+  // Scale so the longer edge = 792 pt, preserving aspect ratio.
+  const FP_MAX  = 792;
+  const fpScale = FP_MAX / Math.max(fpMeta.w, fpMeta.h);
+  const fpPageW = Math.round(fpMeta.w * fpScale);
+  const fpPageH = Math.round(fpMeta.h * fpScale);
 
+  const doc = new jsPDF({ unit: 'pt', format: [fpPageW, fpPageH] });
+
+  // Floor plan fills the entire page edge-to-edge.
+  doc.addImage(fpData, imgFmt(fpData), 0, 0, fpPageW, fpPageH);
+
+  // Thin white title bar at top so the floor plan name is always readable.
+  const titleH = 18;
+  doc.setFillColor(255, 255, 255);
+  doc.rect(0, 0, fpPageW, titleH, 'F');
   doc.setFont(undefined, 'bold');
-  doc.setFontSize(14);
+  doc.setFontSize(11);
   doc.setTextColor(0, 0, 0);
-  doc.text(floorPlan.name, M, M + 16);
+  doc.text(floorPlan.name, 6, 13);
 
-  doc.addImage(fpData, imgFmt(fpData), fpX, fpY, fpFit.w, fpFit.h);
-
-  // 0.2 × previous 5pt = 1pt radius — subtle dot at 1:750 scale.
+  // Pins sit directly on the full-page image — no margin offset needed.
   const markerR = 1;
-
   pins.forEach((pin, i) => {
-    const cx = fpX + pin.xNorm * fpFit.w;
-    const cy = fpY + pin.yNorm * fpFit.h;
+    const cx = pin.xNorm * fpPageW;
+    const cy = pin.yNorm * fpPageH;
     drawMarker(doc, i + 1, cx, cy, pin.color, markerR);
     const targetPage = pinFirstPage[i];
     if (targetPage) doc.link(cx - markerR - 4, cy - markerR - 4, (markerR + 4) * 2, (markerR + 4) * 2, { pageNumber: targetPage });
@@ -145,9 +149,9 @@ async function exportFloorPlanPdf(floorPlan, pins, photosByPin) {
 
   if (items.length === 0) { doc.save(`SiteSnap-${floorPlan.name}.pdf`); return; }
 
-  // ── Body pages: continuous 2-col flow ────────────────────────────────────
+  // ── Body pages: letter-size continuous 2-col flow ────────────────────────
   let currentPage = 1;
-  doc.addPage(); // body starts on page 2
+  doc.addPage([PW, PH]); // body starts on page 2 (letter size)
 
   for (let idx = 0; idx < items.length; idx++) {
     const item = items[idx];
@@ -155,7 +159,7 @@ async function exportFloorPlanPdf(floorPlan, pins, photosByPin) {
 
     // Switch to the correct page
     while (currentPage < page) {
-      doc.addPage();
+      doc.addPage([PW, PH]);
       currentPage++;
       // "< Floor Plan" back link on every body page
       doc.setFont(undefined, 'normal');

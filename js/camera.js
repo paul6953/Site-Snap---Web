@@ -212,23 +212,7 @@ const Camera = {
         updateStamp();
       });
 
-      useBtn.addEventListener('click', () => {
-        if (!capturedBlob) return;
-        // Auto-download without extra user tap.
-        // iOS Safari → Files app > Downloads. Android Chrome → Downloads folder.
-        // (Direct camera-roll write is not available to web apps on any platform.)
-        try {
-          const url = URL.createObjectURL(capturedBlob);
-          const a   = document.createElement('a');
-          a.href     = url;
-          a.download = `SiteSnap_${Date.now()}.jpg`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          setTimeout(() => URL.revokeObjectURL(url), 3000);
-        } catch (_) {}
-        cleanup(capturedBlob);
-      });
+      useBtn.addEventListener('click', () => { if (capturedBlob) cleanup(capturedBlob); });
     });
   },
 };
