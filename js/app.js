@@ -48,6 +48,7 @@ const loadingOverlay  = document.getElementById('loading-overlay');
 const loadingText     = document.getElementById('loading-text');
 
 // ─── State ────────────────────────────────────────────────────────────────────
+let _permissionRequested = false;
 let homeThumbUrls        = [];
 let currentFP            = null;
 let currentFpUrl         = null;
@@ -165,9 +166,11 @@ async function openFloorPlan(id) {
   });
   currentFpView.setPins(currentPins);
 
-  // Pre-warm camera permission while still in the user-gesture call chain
-  // so Camera.capture() later doesn't trigger a second permission dialog.
-  Camera.requestPermission();
+  // Pre-warm camera + geolocation permissions once per session.
+  if (!_permissionRequested) {
+    _permissionRequested = true;
+    Camera.requestPermission();
+  }
 }
 
 // ─── Edit mode ────────────────────────────────────────────────────────────────

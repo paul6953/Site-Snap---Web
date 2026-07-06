@@ -4,15 +4,43 @@
 // • Torch/flash toggle button appears automatically if the device supports it.
 // • Timestamp + reverse-geocoded address burned into top-right corner.
 
+// Address is fetched once per session and reused — avoids repeated geolocation prompts.
+let _cachedAddress = '';
+
+function _startAddressFetch() {
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(
+    async ({ coords: { latitude: lat, longitude: lng } }) => {
+      try {
+        const res  = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+          { headers: { 'Accept-Language': 'en' } }
+        );
+        const data = await res.json();
+        const a    = data.address || {};
+        const parts = [
+          a.building || a.amenity || a.office || a.mall || '',
+          a.house_number ? `${a.house_number} ${a.road || ''}`.trim() : (a.road || ''),
+          a.suburb || a.neighbourhood || a.city_district || a.city || '',
+        ].map(s => s.trim()).filter(Boolean);
+        _cachedAddress = parts.slice(0, 2).join(', ');
+      } catch (_) {}
+    },
+    () => {},
+    { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
+  );
+}
+
 const Camera = {
-  // Pre-warm camera permission in the background so subsequent opens
-  // don't trigger a second permission dialog within the same session.
+  // Pre-warm camera permission and start address lookup.
+  // Call once per session (guarded by the caller) — no repeated dialogs.
   async requestPermission() {
     if (!navigator.mediaDevices?.getUserMedia) return;
     try {
       const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
       s.getTracks().forEach(t => t.stop());
     } catch (_) {}
+    _startAddressFetch();
   },
 
   async capture() {
@@ -69,31 +97,8 @@ const Camera = {
       let torchOn      = false;
       let capturedBlob = null;
       let stampInterval = null;
-      let locationLine  = '';
-
-      // ── Reverse geocoding ───────────────────────────────────────────────
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          async ({ coords: { latitude: lat, longitude: lng } }) => {
-            try {
-              const res  = await fetch(
-                `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
-                { headers: { 'Accept-Language': 'en' } }
-              );
-              const data = await res.json();
-              const a    = data.address || {};
-              const parts = [
-                a.building || a.amenity || a.office || a.mall || '',
-                a.house_number ? `${a.house_number} ${a.road || ''}`.trim() : (a.road || ''),
-                a.suburb || a.neighbourhood || a.city_district || a.city || '',
-              ].map(s => s.trim()).filter(Boolean);
-              locationLine = parts.slice(0, 2).join(', ');
-            } catch (_) {}
-          },
-          () => {},
-          { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
-        );
-      }
+      // Use address cached when requestPermission() was called — no repeated geolocation prompt.
+      let locationLine = _cachedAddress;
 
       // ── Live stamp ──────────────────────────────────────────────────────
       function getTimestamp() {
@@ -207,17 +212,21 @@ const Camera = {
         updateStamp();
       });
 
-      useBtn.addEventListener('click', async () => {
+      useBtn.addEventListener('click', () => {
         if (!capturedBlob) return;
-        // Offer native share sheet so user can "Save Image" to camera roll.
-        // Web APIs have no direct camera-roll write permission — share sheet is the
-        // closest a PWA can get on iOS/Android without a native wrapper.
-        if (navigator.canShare) {
-          try {
-            const file = new File([capturedBlob], `SiteSnap_${Date.now()}.jpg`, { type: 'image/jpeg' });
-            if (navigator.canShare({ files: [file] })) await navigator.share({ files: [file] });
-          } catch (_) {} // dismissed or not supported — proceed anyway
-        }
+        // Auto-download without extra user tap.
+        // iOS Safari → Files app > Downloads. Android Chrome → Downloads folder.
+        // (Direct camera-roll write is not available to web apps on any platform.)
+        try {
+          const url = URL.createObjectURL(capturedBlob);
+          const a   = document.createElement('a');
+          a.href     = url;
+          a.download = `SiteSnap_${Date.now()}.jpg`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 3000);
+        } catch (_) {}
         cleanup(capturedBlob);
       });
     });

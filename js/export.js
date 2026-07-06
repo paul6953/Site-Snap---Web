@@ -45,16 +45,16 @@ function aspectFit(iw, ih, bw, bh) {
   return { w: iw * s, h: ih * s };
 }
 
-function drawMarker(doc, num, cx, cy, colorHex, r = 10) {
+function drawMarker(doc, num, cx, cy, colorHex, r = 5) {
   const { r: cr, g: cg, b: cb } = hexToRgb(colorHex);
   doc.setFillColor(cr, cg, cb);
   doc.circle(cx, cy, r, 'F');
   doc.setDrawColor(255, 255, 255);
-  doc.setLineWidth(1.5);
-  doc.circle(cx, cy, r - 0.5, 'S');
+  doc.setLineWidth(Math.max(0.5, r * 0.12));
+  doc.circle(cx, cy, r - 0.4, 'S');
   doc.setTextColor(255, 255, 255);
   doc.setFont(undefined, 'bold');
-  doc.setFontSize(9);
+  doc.setFontSize(Math.max(4, Math.round(r * 1.0)));
   doc.text(String(num), cx, cy, { align: 'center', baseline: 'middle' });
 }
 
@@ -129,15 +129,15 @@ async function exportFloorPlanPdf(floorPlan, pins, photosByPin) {
 
   doc.addImage(fpData, imgFmt(fpData), fpX, fpY, fpFit.w, fpFit.h);
 
-  // Marker radius scales with the floor plan — larger maps get larger, readable pins.
-  const markerR = Math.max(7, Math.min(15, Math.round((fpFit.w + fpFit.h) / 2 * 0.015)));
+  // At 1:750 architectural scale, 1m real ≈ 5pt radius on a letter-size PDF.
+  const markerR = 5;
 
   pins.forEach((pin, i) => {
     const cx = fpX + pin.xNorm * fpFit.w;
     const cy = fpY + pin.yNorm * fpFit.h;
     drawMarker(doc, i + 1, cx, cy, pin.color, markerR);
     const targetPage = pinFirstPage[i];
-    if (targetPage) doc.link(cx - markerR - 2, cy - markerR - 2, (markerR + 2) * 2, (markerR + 2) * 2, { pageNumber: targetPage });
+    if (targetPage) doc.link(cx - markerR - 4, cy - markerR - 4, (markerR + 4) * 2, (markerR + 4) * 2, { pageNumber: targetPage });
   });
 
   if (items.length === 0) { doc.save(`SiteSnap-${floorPlan.name}.pdf`); return; }
