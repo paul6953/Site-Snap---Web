@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sitesnap-v7';
+const CACHE_NAME = 'sitesnap-v8';
 const ASSETS = [
   '.',
   'index.html',

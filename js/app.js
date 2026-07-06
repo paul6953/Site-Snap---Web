@@ -164,6 +164,10 @@ async function openFloorPlan(id) {
     onPinMoved:    handlePinMoved,
   });
   currentFpView.setPins(currentPins);
+
+  // Pre-warm camera permission while still in the user-gesture call chain
+  // so Camera.capture() later doesn't trigger a second permission dialog.
+  Camera.requestPermission();
 }
 
 // ─── Edit mode ────────────────────────────────────────────────────────────────
@@ -309,13 +313,20 @@ backBtn.addEventListener('click', () => {
 
 // ─── Export ───────────────────────────────────────────────────────────────────
 exportBtn.addEventListener('click', async () => {
-  if (!currentFP || currentPins.length === 0) { alert('Add at least one pin before exporting.'); return; }
+  if (!currentFP) return;
   showLoading('Generating PDF…');
   try {
+    // Always re-fetch so any rename or edits since opening are included
+    const freshFP   = await DB.getFloorPlan(currentFP.id);
+    const freshPins = await DB.getPinsForFloorPlan(currentFP.id);
+    if (freshPins.length === 0) { hideLoading(); alert('Add at least one pin before exporting.'); return; }
     const photosByPin = {};
-    for (const pin of currentPins) photosByPin[pin.id] = await DB.getPhotosForPin(pin.id);
-    await exportFloorPlanPdf(currentFP, currentPins, photosByPin);
-  } catch (err) { alert('Export failed: ' + err.message); }
+    for (const pin of freshPins) photosByPin[pin.id] = await DB.getPhotosForPin(pin.id);
+    await exportFloorPlanPdf(freshFP, freshPins, photosByPin);
+  } catch (err) {
+    console.error('Export error:', err);
+    alert('Export failed: ' + (err.message || 'Unknown error') + '\n\nIf this keeps happening, close and reopen the app.');
+  }
   finally { hideLoading(); }
 });
 

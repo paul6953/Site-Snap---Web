@@ -45,8 +45,7 @@ function aspectFit(iw, ih, bw, bh) {
   return { w: iw * s, h: ih * s };
 }
 
-function drawMarker(doc, num, cx, cy, colorHex) {
-  const r = 10;
+function drawMarker(doc, num, cx, cy, colorHex, r = 10) {
   const { r: cr, g: cg, b: cb } = hexToRgb(colorHex);
   doc.setFillColor(cr, cg, cb);
   doc.circle(cx, cy, r, 'F');
@@ -83,6 +82,9 @@ function simulate(items) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 async function exportFloorPlanPdf(floorPlan, pins, photosByPin) {
+  if (!window.jspdf?.jsPDF) {
+    throw new Error('PDF library failed to load. Close and reopen the app, then try again.');
+  }
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
 
@@ -127,12 +129,15 @@ async function exportFloorPlanPdf(floorPlan, pins, photosByPin) {
 
   doc.addImage(fpData, imgFmt(fpData), fpX, fpY, fpFit.w, fpFit.h);
 
+  // Marker radius scales with the floor plan — larger maps get larger, readable pins.
+  const markerR = Math.max(7, Math.min(15, Math.round((fpFit.w + fpFit.h) / 2 * 0.015)));
+
   pins.forEach((pin, i) => {
     const cx = fpX + pin.xNorm * fpFit.w;
     const cy = fpY + pin.yNorm * fpFit.h;
-    drawMarker(doc, i + 1, cx, cy, pin.color);
+    drawMarker(doc, i + 1, cx, cy, pin.color, markerR);
     const targetPage = pinFirstPage[i];
-    if (targetPage) doc.link(cx - 12, cy - 12, 24, 24, { pageNumber: targetPage });
+    if (targetPage) doc.link(cx - markerR - 2, cy - markerR - 2, (markerR + 2) * 2, (markerR + 2) * 2, { pageNumber: targetPage });
   });
 
   if (items.length === 0) { doc.save(`SiteSnap-${floorPlan.name}.pdf`); return; }
