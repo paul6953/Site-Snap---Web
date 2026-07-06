@@ -1,7 +1,7 @@
 // IndexedDB wrapper. All floor plan images, pins, and photos live only in this
 // browser's local database — nothing is ever uploaded anywhere.
 const DB_NAME = 'sitesnap';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbPromise = null;
 
@@ -21,6 +21,9 @@ function openDb() {
       if (!db.objectStoreNames.contains('photos')) {
         const photos = db.createObjectStore('photos', { keyPath: 'id' });
         photos.createIndex('byPin', 'pinId');
+      }
+      if (!db.objectStoreNames.contains('manpowerDays')) {
+        db.createObjectStore('manpowerDays', { keyPath: 'date' });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -136,6 +139,23 @@ const DB = {
       photoStore.delete(photo.id);
     }
     await promisifyRequest(t.objectStore('pins').delete(id));
+  },
+
+  // --- Manpower ---
+  async saveManpowerDay(date, entries) {
+    const t = await tx('manpowerDays', 'readwrite');
+    await promisifyRequest(t.objectStore('manpowerDays').put({ date, entries }));
+  },
+
+  async getManpowerDay(date) {
+    const t = await tx('manpowerDays', 'readonly');
+    return promisifyRequest(t.objectStore('manpowerDays').get(date));
+  },
+
+  async getAllManpowerDays() {
+    const t = await tx('manpowerDays', 'readonly');
+    const all = await promisifyRequest(t.objectStore('manpowerDays').getAll());
+    return all.sort((a, b) => a.date.localeCompare(b.date));
   },
 
   // --- Photos ---

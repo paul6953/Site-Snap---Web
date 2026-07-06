@@ -15,7 +15,10 @@
   <div id="screen-home" class="screen">
     <header class="nav">
       <h1 class="nav-title">SiteSnap</h1>
-      <button id="import-btn" class="nav-action">Upload</button>
+      <div class="nav-right-group">
+        <button id="mp-open-btn" class="nav-action-ghost">Manpower</button>
+        <button id="import-btn" class="nav-action">Upload</button>
+      </div>
     </header>
     <input type="file" id="import-input" accept="image/*,application/pdf" hidden />
     <div id="floorplan-list" class="list"></div>
@@ -123,6 +126,82 @@
     </div>
   </div>
 
+  <!-- Manpower ───────────────────────────────────────────────────────────── -->
+  <div id="screen-manpower" class="screen" style="display:none">
+
+    <!-- Sub: Home -->
+    <div id="mp-sub-home" class="mp-sub">
+      <header class="nav">
+        <button id="mp-back-home" class="nav-back">‹ Back</button>
+        <h1 class="nav-title-center">Manpower</h1>
+        <div style="width:60px"></div>
+      </header>
+      <div class="mp-home-body">
+        <p class="mp-date-label" id="mp-date-label"></p>
+        <p class="mp-status-label" id="mp-home-status"></p>
+        <button class="mp-btn-primary" id="mp-start-btn">Record Today's Count</button>
+        <button class="mp-btn-secondary" id="mp-view-reports-btn">View Reports</button>
+      </div>
+    </div>
+
+    <!-- Sub: Trade list -->
+    <div id="mp-sub-trades" class="mp-sub" style="display:none">
+      <header class="nav">
+        <button id="mp-trades-back" class="nav-back">‹ Back</button>
+        <h1 class="nav-title-center" id="mp-trades-subtitle"></h1>
+        <button id="mp-save-btn" class="nav-action">Save</button>
+      </header>
+      <div class="mp-list" id="mp-trades-list"></div>
+    </div>
+
+    <!-- Sub: Zone list -->
+    <div id="mp-sub-zones" class="mp-sub" style="display:none">
+      <header class="nav">
+        <button id="mp-zones-back" class="nav-back">‹ Back</button>
+        <h1 class="nav-title-center" id="mp-zones-title"></h1>
+        <div style="width:60px"></div>
+      </header>
+      <div class="mp-list" id="mp-zones-list"></div>
+    </div>
+
+    <!-- Sub: Keypad -->
+    <div id="mp-sub-keypad" class="mp-sub" style="display:none">
+      <header class="nav">
+        <button id="mp-keypad-back" class="nav-back">‹ Back</button>
+        <h1 class="nav-title-center" id="mp-keypad-subtitle"></h1>
+        <div style="width:60px"></div>
+      </header>
+      <div class="mp-keypad-body">
+        <div class="mp-keypad-display" id="mp-keypad-display">0</div>
+        <div class="mp-keypad-grid">
+          <button class="mp-key" data-k="7">7</button>
+          <button class="mp-key" data-k="8">8</button>
+          <button class="mp-key" data-k="9">9</button>
+          <button class="mp-key" data-k="4">4</button>
+          <button class="mp-key" data-k="5">5</button>
+          <button class="mp-key" data-k="6">6</button>
+          <button class="mp-key" data-k="1">1</button>
+          <button class="mp-key" data-k="2">2</button>
+          <button class="mp-key" data-k="3">3</button>
+          <button class="mp-key" data-k="⌫">⌫</button>
+          <button class="mp-key" data-k="0">0</button>
+          <button class="mp-key mp-key-confirm" data-k="✓">✓</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sub: Reports -->
+    <div id="mp-sub-reports" class="mp-sub" style="display:none">
+      <header class="nav">
+        <button id="mp-reports-back" class="nav-back">‹ Back</button>
+        <h1 class="nav-title-center">Reports</h1>
+        <div style="width:60px"></div>
+      </header>
+      <div class="mp-reports-scroll" id="mp-reports-body"></div>
+    </div>
+
+  </div>
+
   <!-- Loading ────────────────────────────────────────────────────────────── -->
   <div id="loading-overlay" class="loading" style="display:none">
     <div class="spinner"></div>
@@ -136,6 +215,7 @@
   <script src="js/camera.js"></script>
   <script src="js/floorplan.js"></script>
   <script src="js/export.js"></script>
+  <script src="js/manpower.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

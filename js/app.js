@@ -438,6 +438,9 @@ function showActionSheet(options) {
   document.body.appendChild(overlay);
 }
 
+// ─── Manpower ─────────────────────────────────────────────────────────────────
+document.getElementById('mp-open-btn').addEventListener('click', openManpowerScreen);
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 renderHome();
 if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));

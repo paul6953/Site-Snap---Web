@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sitesnap-v13';
+const CACHE_NAME = 'sitesnap-v14';
 const ASSETS = [
   '.',
   'index.html',
@@ -10,6 +10,7 @@ const ASSETS = [
   'js/floorplan.js',
   'js/export.js',
   'js/pdfimport.js',
+  'js/manpower.js',
   'js/app.js',
   'js/vendor/jspdf.umd.min.js',
   'js/vendor/pdf.min.js',
