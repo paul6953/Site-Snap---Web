@@ -399,17 +399,6 @@ function chart(container, title, labels, datasets) {
   const hasData = tDatasets.some(ds => ds.data.some(v => v > 0));
   const canvas  = document.createElement('canvas');
 
-  // Legend always rendered (above chart so it's visible before scrolling)
-  const leg = document.createElement('div');
-  leg.className = 'mp-legend';
-  tDatasets.forEach(ds => {
-    const item = document.createElement('span');
-    item.className = 'mp-legend-item';
-    item.innerHTML = `<span class="mp-legend-dot" style="background:${ds.color}"></span>${ds.label}`;
-    leg.appendChild(item);
-  });
-  card.appendChild(leg);
-
   if (!hasData) {
     const e = document.createElement('p');
     e.className = 'mp-placeholder';
@@ -430,7 +419,7 @@ function chart(container, title, labels, datasets) {
     const dpr        = window.devicePixelRatio || 1;
     const W          = canvas.parentElement.clientWidth - 28;
     const legendRows = Math.ceil(tDatasets.length / 4);
-    const H          = 200 + 24 + 68 + legendRows * 16; // chart area + top + bottom padding
+    const H          = 200 + (8 + legendRows * 16 + 8) + 74; // chart area + top (legend) + bottom
     canvas.width  = W * dpr;
     canvas.height = H * dpr;
     canvas.style.width  = W + 'px';
@@ -444,17 +433,36 @@ function chart(container, title, labels, datasets) {
 }
 
 function drawLineChart(ctx, W, H, labels, datasets) {
-  // P.b: rotated labels ~52px + "Date" label 14px + legend rows + gap
-  const legendRows  = Math.ceil(datasets.length / 4);
-  const P = { t: 24, r: 16, b: 68 + legendRows * 16, l: 52 };
+  const DOT = 7, ITEM_GAP = 14, ROW_H = 16, PER_ROW = 4;
+  const legendRows = Math.ceil(datasets.length / 4);
+  // P.t: 8px top gap + legend rows + 8px gap before chart
+  // P.b: ~52px rotated labels + 14px "Date" label + 8px bottom gap
+  const P = { t: 8 + legendRows * ROW_H + 8, r: 16, b: 74, l: 52 };
   const cW = W - P.l - P.r;
   const cH = H - P.t - P.b;
   const n  = labels.length;
 
-  // Always use interval=1 so every whole number appears on Y axis
   const niceMax = Math.max(Math.ceil(Math.max(...datasets.flatMap(d => d.data), 1)), 1);
 
   ctx.clearRect(0, 0, W, H);
+
+  // Legend at top — centered, up to PER_ROW items per row
+  ctx.font = '9px -apple-system,sans-serif';
+  const legRows = [];
+  for (let i = 0; i < datasets.length; i += PER_ROW) legRows.push(datasets.slice(i, i + PER_ROW));
+  legRows.forEach((row, ri) => {
+    const widths = row.map(ds => DOT + 4 + ctx.measureText(ds.label).width);
+    const totalW = widths.reduce((s, w) => s + w, 0) + ITEM_GAP * (row.length - 1);
+    let lx = (W - totalW) / 2;
+    const ly = 8 + ri * ROW_H + ROW_H / 2;
+    row.forEach((ds, ci) => {
+      ctx.fillStyle = ds.color;
+      ctx.beginPath(); ctx.arc(lx + DOT / 2, ly, DOT / 2, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#3c3c43'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText(ds.label, lx + DOT + 4, ly);
+      lx += widths[ci] + ITEM_GAP;
+    });
+  });
 
   // "Workers" Y-axis label (rotated)
   ctx.save();
@@ -503,39 +511,15 @@ function drawLineChart(ctx, W, H, labels, datasets) {
       x: P.l + (n < 2 ? cW / 2 : (i / (n - 1)) * cW),
       y: P.t + cH - (v / niceMax) * cH,
     }));
-
     ctx.strokeStyle = ds.color; ctx.lineWidth = 1.5; ctx.lineJoin = 'round';
     ctx.beginPath();
     pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
     ctx.stroke();
-
     ctx.fillStyle = ds.color;
     for (const p of pts) {
       ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI * 2); ctx.fill();
     }
   }
-
-  // Legend — drawn on canvas so PDF export captures it
-  ctx.font = '9px -apple-system,sans-serif';
-  const DOT = 7, ITEM_GAP = 14, ROW_H = 16;
-  const PER_ROW = 4;
-  const rows = [];
-  for (let i = 0; i < datasets.length; i += PER_ROW) rows.push(datasets.slice(i, i + PER_ROW));
-  const legendTop = H - legendRows * ROW_H - 4;
-
-  rows.forEach((row, ri) => {
-    const rowWidths = row.map(ds => DOT + 4 + ctx.measureText(ds.label).width);
-    const totalW    = rowWidths.reduce((s, w) => s + w, 0) + ITEM_GAP * (row.length - 1);
-    let lx = (W - totalW) / 2;
-    const ly = legendTop + ri * ROW_H + ROW_H / 2;
-    row.forEach((ds, ci) => {
-      ctx.fillStyle = ds.color;
-      ctx.beginPath(); ctx.arc(lx + DOT / 2, ly, DOT / 2, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#3c3c43'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-      ctx.fillText(ds.label, lx + DOT + 4, ly);
-      lx += rowWidths[ci] + ITEM_GAP;
-    });
-  });
 }
 
 // ─── PDF chart export ─────────────────────────────────────────────────────────
