@@ -324,8 +324,8 @@ function exportManpowerExcel(allDays) {
 function renderAllCharts(container, allDays) {
   mpChartItems = [];
   const labels = allDays.map(d => {
-    const [, m, day] = d.date.split('-');
-    return `${parseInt(m)}/${parseInt(day)}`;
+    const [y, m, day] = d.date.split('-');
+    return `${parseInt(m)}/${parseInt(day)}/${y}`;
   });
 
   const p1       = (tid) => allDays.map(d => d.entries?.[tid]?.P1 || 0);
@@ -427,9 +427,10 @@ function chart(container, title, labels, datasets) {
 
   function redrawCanvas() {
     if (!canvas.parentElement) return;
-    const dpr = window.devicePixelRatio || 1;
-    const W   = canvas.parentElement.clientWidth - 28;
-    const H   = 280;
+    const dpr        = window.devicePixelRatio || 1;
+    const W          = canvas.parentElement.clientWidth - 28;
+    const legendRows = Math.ceil(tDatasets.length / 4);
+    const H          = 200 + 24 + 68 + legendRows * 16; // chart area + top + bottom padding
     canvas.width  = W * dpr;
     canvas.height = H * dpr;
     canvas.style.width  = W + 'px';
@@ -443,20 +444,30 @@ function chart(container, title, labels, datasets) {
 }
 
 function drawLineChart(ctx, W, H, labels, datasets) {
-  const P  = { t: 16, r: 16, b: 64, l: 44 };
+  // P.b: rotated labels ~52px + "Date" label 14px + legend rows + gap
+  const legendRows  = Math.ceil(datasets.length / 4);
+  const P = { t: 24, r: 16, b: 68 + legendRows * 16, l: 52 };
   const cW = W - P.l - P.r;
   const cH = H - P.t - P.b;
   const n  = labels.length;
 
   // Always use interval=1 so every whole number appears on Y axis
   const niceMax = Math.max(Math.ceil(Math.max(...datasets.flatMap(d => d.data), 1)), 1);
-  const ticks   = niceMax;
 
   ctx.clearRect(0, 0, W, H);
 
+  // "Workers" Y-axis label (rotated)
+  ctx.save();
+  ctx.fillStyle = '#8e8e93'; ctx.font = 'bold 9px -apple-system,sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.translate(10, P.t + cH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Workers', 0, 0);
+  ctx.restore();
+
   // Y grid + labels — every whole number from 0 to niceMax
   ctx.font = '9px -apple-system,sans-serif';
-  for (let i = 0; i <= ticks; i++) {
+  for (let i = 0; i <= niceMax; i++) {
     const y = P.t + cH - (i / niceMax) * cH;
     ctx.strokeStyle = i === 0 ? '#c7c7cc' : '#e5e5ea';
     ctx.lineWidth   = 0.5;
@@ -465,7 +476,7 @@ function drawLineChart(ctx, W, H, labels, datasets) {
     ctx.fillText(i, P.l - 6, y);
   }
 
-  // X labels — every other point when dense (keeps spacing comfortable), rotated -45°
+  // X labels — every other point when dense, rotated -45°
   const labelStep = n > 14 ? 2 : 1;
   ctx.fillStyle = '#8e8e93'; ctx.font = '9px -apple-system,sans-serif';
   for (let i = 0; i < n; i++) {
@@ -478,6 +489,13 @@ function drawLineChart(ctx, W, H, labels, datasets) {
     ctx.fillText(labels[i], 0, 0);
     ctx.restore();
   }
+
+  // "Date" X-axis label (centered below rotated labels)
+  ctx.save();
+  ctx.fillStyle = '#8e8e93'; ctx.font = 'bold 9px -apple-system,sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText('Date', P.l + cW / 2, P.t + cH + 58);
+  ctx.restore();
 
   // Series lines + dots
   for (const ds of datasets) {
@@ -496,6 +514,28 @@ function drawLineChart(ctx, W, H, labels, datasets) {
       ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI * 2); ctx.fill();
     }
   }
+
+  // Legend — drawn on canvas so PDF export captures it
+  ctx.font = '9px -apple-system,sans-serif';
+  const DOT = 7, ITEM_GAP = 14, ROW_H = 16;
+  const PER_ROW = 4;
+  const rows = [];
+  for (let i = 0; i < datasets.length; i += PER_ROW) rows.push(datasets.slice(i, i + PER_ROW));
+  const legendTop = H - legendRows * ROW_H - 4;
+
+  rows.forEach((row, ri) => {
+    const rowWidths = row.map(ds => DOT + 4 + ctx.measureText(ds.label).width);
+    const totalW    = rowWidths.reduce((s, w) => s + w, 0) + ITEM_GAP * (row.length - 1);
+    let lx = (W - totalW) / 2;
+    const ly = legendTop + ri * ROW_H + ROW_H / 2;
+    row.forEach((ds, ci) => {
+      ctx.fillStyle = ds.color;
+      ctx.beginPath(); ctx.arc(lx + DOT / 2, ly, DOT / 2, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#3c3c43'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText(ds.label, lx + DOT + 4, ly);
+      lx += rowWidths[ci] + ITEM_GAP;
+    });
+  });
 }
 
 // ─── PDF chart export ─────────────────────────────────────────────────────────
