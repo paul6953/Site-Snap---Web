@@ -25,6 +25,13 @@ let mpActiveZone  = null;
 let mpKeypadVal   = '';
 let mpChartItems  = []; // { type:'section'|'chart', title, canvas? }
 
+// Redraw all charts on orientation change / window resize so landscape fills the screen
+window.addEventListener('resize', () => {
+  requestAnimationFrame(() => {
+    mpChartItems.forEach(item => { if (item.canvas && item.canvas._redraw) item.canvas._redraw(); });
+  });
+});
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function todayISO() {
   const d = new Date();
@@ -418,7 +425,8 @@ function chart(container, title, labels, datasets) {
 
   mpChartItems.push({ type: 'chart', title, canvas });
 
-  requestAnimationFrame(() => {
+  function redrawCanvas() {
+    if (!canvas.parentElement) return;
     const dpr = window.devicePixelRatio || 1;
     const W   = canvas.parentElement.clientWidth - 28;
     const H   = 280;
@@ -429,17 +437,9 @@ function chart(container, title, labels, datasets) {
     const ctx = canvas.getContext('2d');
     ctx.scale(dpr, dpr);
     drawLineChart(ctx, W, H, tLabels, tDatasets);
-  });
-}
-
-// Pick a round interval so Y-axis shows only whole numbers at sensible steps
-function niceInterval(maxVal) {
-  if (maxVal <= 5)   return 1;
-  if (maxVal <= 12)  return 2;
-  if (maxVal <= 30)  return 5;
-  if (maxVal <= 60)  return 10;
-  if (maxVal <= 120) return 20;
-  return 25;
+  }
+  canvas._redraw = redrawCanvas;
+  requestAnimationFrame(redrawCanvas);
 }
 
 function drawLineChart(ctx, W, H, labels, datasets) {
@@ -448,23 +448,21 @@ function drawLineChart(ctx, W, H, labels, datasets) {
   const cH = H - P.t - P.b;
   const n  = labels.length;
 
-  const rawMax   = Math.max(...datasets.flatMap(d => d.data), 1);
-  const interval = niceInterval(rawMax);
-  const niceMax  = Math.ceil(rawMax / interval) * interval;
-  const ticks    = niceMax / interval;
+  // Always use interval=1 so every whole number appears on Y axis
+  const niceMax = Math.max(Math.ceil(Math.max(...datasets.flatMap(d => d.data), 1)), 1);
+  const ticks   = niceMax;
 
   ctx.clearRect(0, 0, W, H);
 
-  // Y grid + labels — one tick per interval, all whole numbers
+  // Y grid + labels — every whole number from 0 to niceMax
   ctx.font = '9px -apple-system,sans-serif';
   for (let i = 0; i <= ticks; i++) {
-    const val = i * interval;
-    const y   = P.t + cH - (val / niceMax) * cH;
+    const y = P.t + cH - (i / niceMax) * cH;
     ctx.strokeStyle = i === 0 ? '#c7c7cc' : '#e5e5ea';
     ctx.lineWidth   = 0.5;
     ctx.beginPath(); ctx.moveTo(P.l, y); ctx.lineTo(P.l + cW, y); ctx.stroke();
     ctx.fillStyle = '#8e8e93'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-    ctx.fillText(val, P.l - 6, y);
+    ctx.fillText(i, P.l - 6, y);
   }
 
   // X labels — every other point when dense (keeps spacing comfortable), rotated -45°
